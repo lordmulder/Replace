@@ -1,0 +1,7 @@
+/obj
+/bin
+/ipch
+/*.suo
+/*.opensdf
+/*.user
+/*.sdf
