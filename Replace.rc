@@ -38,8 +38,8 @@ BEGIN
         BEGIN
             VALUE "ProductName", "Replace"
             VALUE "FileDescription", "Replace"
-            VALUE "ProductVersion", 1.00
-            VALUE "FileVersion", 1.00
+            VALUE "ProductVersion", "1.0.0"
+            VALUE "FileVersion", "1.0.0"
             VALUE "InternalName", "Replace"
             VALUE "OriginalFilename", "Replace.exe"
             VALUE "LegalCopyright", "Created by LoRd_MuldeR <MuldeR2@GMX.de>"

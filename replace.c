@@ -21,9 +21,9 @@ static __inline void increment(DWORD *const value, const DWORD limit)
 	}
 }
 
-static __inline DWORD add(const DWORD a, const DWORD b, const DWORD limit)
+static __inline DWORD add_mod(const DWORD value_a, const DWORD value_b, const DWORD limit)
 {
-	DWORD result = a + b;
+	DWORD result = value_a + value_b;
 	while(result >= limit)
 	{
 		result -= limit;
@@ -35,7 +35,11 @@ static __inline DWORD add(const DWORD a, const DWORD b, const DWORD limit)
 /* String Routines                                                         */
 /* ======================================================================= */
 
+#define CP_1252 1252
+#define TO_UPPER(C) ((((C) >= 0x61) && ((C) <= 0x7A)) ? ((C) - 0x20) : (C))
+
 #define NOT_EMPTY(STR) ((STR) && ((STR)[0U]))
+#define EMPTY(STR) (!NOT_EMPTY(STR))
 
 static BYTE *utf16_to_bytes(const WCHAR *const input, const UINT code_page)
 {
@@ -58,6 +62,11 @@ static BYTE *utf16_to_bytes(const WCHAR *const input, const UINT code_page)
 
 	LocalFree(buffer);
 	return NULL;
+}
+
+static __inline BOOL compare_char(const BYTE char_a, const BYTE char_b, const BOOL ignore_case)
+{
+	return ignore_case ? (TO_UPPER(char_a) == TO_UPPER(char_b)) : (char_a == char_b);
 }
 
 /* ======================================================================= */
@@ -244,7 +253,7 @@ static __inline BOOL read_next_byte(BYTE *const output, const HANDLE input, inpu
 	return TRUE;
 }
 
-static __inline BOOL write_next_byte(const BYTE input, const HANDLE output, output_context_t *const ctx)
+static __inline BOOL write_next_byte(const BYTE input, const HANDLE output, output_context_t *const ctx, const BOOL sync)
 {
 	ctx->buffer[ctx->pos++] = input;
 	if(ctx->pos >= BUFF_SIZE)
@@ -259,18 +268,26 @@ static __inline BOOL write_next_byte(const BYTE input, const HANDLE output, outp
 		{
 			return FALSE;
 		}
+		if(sync)
+		{
+			FlushFileBuffers(output);
+		}
 	}
 	return TRUE;
 }
 
-static __inline BOOL write_byte_array(const BYTE *const input, const DWORD input_len, const HANDLE output, output_context_t *const ctx)
+static __inline BOOL write_byte_array(const BYTE *const input, const DWORD input_len, const HANDLE output, output_context_t *const ctx, const BOOL sync)
 {
 	DWORD input_pos;
 	for(input_pos = 0U; input_pos < input_len; ++input_pos)
 	{
-		if(!write_next_byte(input[input_pos], output, ctx))
+		if(!write_next_byte(input[input_pos], output, ctx, FALSE))
 		{
 			return FALSE;
+		}
+		if(sync)
+		{
+			FlushFileBuffers(output);
 		}
 	}
 	return TRUE;
@@ -289,6 +306,7 @@ static __inline BOOL flush_pending_bytes(const HANDLE output, output_context_t *
 		{
 			return FALSE;
 		}
+		FlushFileBuffers(output);
 	}
 	return TRUE;
 }
@@ -345,7 +363,7 @@ static __inline BOOL ringbuffer_put(const BYTE in, BYTE *const out, ringbuffer_t
 	return TRUE;
 }
 
-static __inline BOOL ringbuffer_compare(const BYTE *const needle, const DWORD needle_len, ringbuffer_t *const ringbuffer)
+static __inline BOOL ringbuffer_compare(const BYTE *const needle, const DWORD needle_len, ringbuffer_t *const ringbuffer, const BOOL ignore_case)
 {
 	DWORD idx_needle, idx_buffer;
 	if(ringbuffer->valid != needle_len)
@@ -354,7 +372,7 @@ static __inline BOOL ringbuffer_compare(const BYTE *const needle, const DWORD ne
 	}
 	for(idx_needle = 0U, idx_buffer = RB_INITIAL_POS(ringbuffer); idx_needle < needle_len; ++idx_needle, increment(&idx_buffer, ringbuffer->capacity))
 	{
-		if(ringbuffer->buffer[idx_buffer] != needle[idx_needle])
+		if(!compare_char(ringbuffer->buffer[idx_buffer], needle[idx_needle], ignore_case))
 		{
 			return FALSE;
 		}
@@ -366,22 +384,84 @@ static __inline BOOL ringbuffer_flush(BYTE *const out, ringbuffer_t *const ringb
 {
 	if(ringbuffer->flushed < ringbuffer->valid)
 	{
-		*out = ringbuffer->buffer[add(RB_INITIAL_POS(ringbuffer), ringbuffer->flushed++, ringbuffer->capacity)];
+		*out = ringbuffer->buffer[add_mod(RB_INITIAL_POS(ringbuffer), ringbuffer->flushed++, ringbuffer->capacity)];
 		return TRUE;
 	}
 	return FALSE;
 }
 
 /* ======================================================================= */
+/* Command-line Options                                                    */
+/* ======================================================================= */
+
+typedef struct options_t
+{ 
+	BOOL show_help;
+	BOOL case_insensitive;
+	BOOL replace_once;
+	BOOL ansi_cp;
+	BOOL force_flush;
+}
+options_t;
+
+static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *const argv, int *const index, options_t *const options)
+{
+	DWORD flag_pos;
+	SecureZeroMemory(options, sizeof(options_t));
+	while(*index < argc)
+	{
+		const WCHAR *const value = argv[*index];
+		if((value[0U] == L'-') && (value[1U] != L'\0'))
+		{
+			*index += 1U;
+			if((value[1U] == L'-') && (value[2U] == L'\0'))
+			{
+				return TRUE; /*stop here!*/
+			}
+			for(flag_pos = 1U; value[flag_pos]; ++flag_pos)
+			{
+				switch(value[flag_pos])
+				{
+				case L'h':
+				case L'?':
+					options->show_help = TRUE;
+					break;
+				case L'i':
+					options->case_insensitive = TRUE;
+					break;
+				case L's':
+					options->replace_once = TRUE;
+					break;
+				case L'a':
+					options->ansi_cp = TRUE;
+					break;
+				case L'f':
+					options->force_flush = TRUE;
+					break;
+				default:
+					print_message(std_err, "Error: Invalid command-line option encountered!\n");
+					return FALSE;
+				}
+			}
+		}
+		else
+		{
+			break; /*no more options*/
+		}
+	}
+	return TRUE;
+}
+
+/* ======================================================================= */
 /* Search & Replace                                                        */
 /* ======================================================================= */
 
-static BOOL search_and_replace(const HANDLE input, const HANDLE output, const BYTE *const needle, const BYTE *const replacement)
+static BOOL search_and_replace(const HANDLE input, const HANDLE output, const BYTE *const needle, const BYTE *const replacement, const options_t *const options)
 {
 	const DWORD needle_len = lstrlenA((LPCSTR)needle);
 	const DWORD replacement_len = lstrlenA((LPCSTR)replacement);
 
-	BOOL success = FALSE;
+	BOOL success = FALSE, copy_remaining = FALSE;
 	input_context_t *input_ctx = NULL; output_context_t *output_ctx  = NULL;
 	ringbuffer_t *ringbuffer;
 	BYTE char_input, char_output;
@@ -408,26 +488,42 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const BY
 	{
 		if(ringbuffer_put(char_input, &char_output, ringbuffer))
 		{
-			if(!write_next_byte(char_output, output, output_ctx))
+			if(!write_next_byte(char_output, output, output_ctx, options->force_flush))
 			{
 				goto finished; 
 			}
 		}
-		if(ringbuffer_compare(needle, needle_len, ringbuffer))
+		if(ringbuffer_compare(needle, needle_len, ringbuffer, options->case_insensitive))
 		{
-			if(!write_byte_array(replacement, replacement_len, output, output_ctx))
-			{
-				goto finished; 
-			}
 			ringbuffer_reset(ringbuffer);
+			if(!write_byte_array(replacement, replacement_len, output, output_ctx, options->force_flush))
+			{
+				goto finished;
+			}
+			if(options->replace_once)
+			{
+				copy_remaining = TRUE;
+				break;
+			}
 		}
 	}
 
 	while(ringbuffer_flush(&char_output, ringbuffer))
 	{
-		if(!write_next_byte(char_output, output, output_ctx))
+		if(!write_next_byte(char_output, output, output_ctx, options->force_flush))
 		{
 			goto finished; 
+		}
+	}
+
+	if(copy_remaining)
+	{
+		while(read_next_byte(&char_input, input, input_ctx))
+		{
+			if(!write_next_byte(char_input, output, output_ctx, options->force_flush))
+			{
+				goto finished;
+			}
 		}
 	}
 
@@ -454,59 +550,97 @@ finished:
 }
 
 /* ======================================================================= */
+/* Manpage                                                                 */
+/* ======================================================================= */
+
+static void print_manpage(const HANDLE std_err)
+{
+	print_message(std_err, "Replace [" __DATE__ "], by LoRd_MuldeR <MuldeR2@GMX.de>\n\n");
+	print_message(std_err, "Replaces all occurences of '<needle>' in '<input_file>' with '<replacement>'.\n");
+	print_message(std_err, "The modified contents are then written to '<output_file>'.\n\n");
+	print_message(std_err, "Usage:\n");
+	print_message(std_err, "  replace.exe [options] <needle> <replacement> [<input_file>] [<output_file>]\n\n");
+	print_message(std_err, "Options:\n");
+	print_message(std_err, "  -i  Perform case-insensitive matching for the characters 'A' to 'Z'\n");
+	print_message(std_err, "  -s  Single replacement; replace only the *first* occurence instead of all\n");
+	print_message(std_err, "  -a  Process input using ANSI codepage (CP-1252) instead of UTF-8\n");
+	print_message(std_err, "  -f  Force immediate flushing of output buffers (may degrade performance)\n");
+	print_message(std_err, "  -h  Display this help and exit\n\n");
+	print_message(std_err, "Notes:\n");
+	print_message(std_err, "  1. If *only* an '<input_file>' is specified, the file is modified in-place!\n");
+	print_message(std_err, "  2. If file names are omitted, reads from STDIN and writes to STDOUT.\n");
+	print_message(std_err, "  3. File name can be specified as \"-\" to read from STDIN or write to STDOUT.\n\n");
+	print_message(std_err, "Examples:\n");
+	print_message(std_err, "  replace.exe \"foo\" \"bar\" \"input.txt\" \"output.txt\"\n");
+	print_message(std_err, "  replace.exe \"foo\" \"bar\" \"modify-me.txt\"\n");
+	print_message(std_err, "  type \"input.txt\" | replace.exe \"foo\" \"bar\" > \"output.txt\"\n\n");
+}
+
+/* ======================================================================= */
 /* Main                                                                    */
 /* ======================================================================= */
 
 static int _main(const int argc, const LPWSTR *const argv)
 {
-	int result = 1;
+	int result = 1, param_offset = 1;
 	const BYTE *needle = NULL, *replacement = NULL;
+	options_t options;
 	HANDLE std_in = GetStdHandle(STD_INPUT_HANDLE), std_out = GetStdHandle(STD_OUTPUT_HANDLE), std_err = GetStdHandle(STD_ERROR_HANDLE);
-	UINT previous_output_cp = 0U;
 	HANDLE input = INVALID_HANDLE_VALUE, output = INVALID_HANDLE_VALUE;
-	const WCHAR *temp_path = NULL, *temp_file = NULL;
+	UINT previous_output_cp = 0U;
+	const WCHAR *source_file = NULL, *output_file = NULL, *temp_path = NULL, *temp_file = NULL;
 
-	if(argc < 3U)
+	if(!parse_options(std_err, argc, argv, &param_offset, &options))
 	{
-		print_message(std_err, "Replace [" __DATE__ "], by LoRd_MuldeR <MuldeR2@GMX.de>\n\n");
-		print_message(std_err, "Replaces all occurences of '<needle>' in '<input_file>' with '<replacement>'.\n");
-		print_message(std_err, "The modified contents are then written to '<output_file>'.\n\n");
-		print_message(std_err, "Usage:\n");
-		print_message(std_err, "   replace.exe <needle> <replacement> [<input_file>] [<output_file>]\n\n");
-		print_message(std_err, "Please note:\n");
-		print_message(std_err, "1. If *only* '<input_file>' is specified, the file will be modified in-place!\n");
-		print_message(std_err, "2. If both file names are omitted, reads from STDIN and writes to STDOUT.\n");
-		print_message(std_err, "3. Either file can be specified as \"-\" to read from STDIN or write to STDOUT.\n\n");
 		goto cleanup;
 	}
 
-	if(lstrlenW(argv[1U]) < 1)
+	if(options.show_help)
+	{
+		print_manpage(std_err);
+		result = 0;
+		goto cleanup;
+	}
+
+	if(argc - param_offset < 2U)
+	{
+		print_message(std_err, "Error: Required parameters are missing! Type \"replace.exe -h\" for details!\n");
+		goto cleanup;
+	}
+
+	if(lstrlenW(argv[param_offset]) < 1)
 	{
 		print_message(std_err, "Error: Search string (needle) must not be empty!\n");
 		goto cleanup;
 	}
 
-	if((argc > 4) && (lstrcmpiW(argv[3U], argv[4U]) == 0))
-	{
-		print_message(std_err, "Error: Input and output file must not be the same!\n");
-		goto cleanup;
-	}
-
-	needle = utf16_to_bytes(argv[1U], CP_UTF8);
+	needle = utf16_to_bytes(argv[param_offset], options.ansi_cp ? CP_1252 : CP_UTF8);
 	if(!needle)
 	{
 		goto cleanup;
 	}
 
-	replacement = utf16_to_bytes(argv[2U], CP_UTF8);
+	replacement = utf16_to_bytes(argv[param_offset + 1], options.ansi_cp ? CP_1252 : CP_UTF8);
 	if(!replacement)
 	{
 		goto cleanup;
 	}
 
-	if((argc > 3U) && (lstrcmpiW(argv[3U], L"-") != 0))
+	source_file = (argc - param_offset > 2) ? argv[param_offset + 2] : NULL;
+	output_file = (argc - param_offset > 3) ? argv[param_offset + 3] : NULL;
+
+	if(NOT_EMPTY(source_file) && NOT_EMPTY(output_file) && (lstrcmpiW(source_file, L"-") != 0) && (lstrcmpiW(output_file, L"-") != 0))
 	{
-		input = CreateFileW(argv[3U], GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+		if(lstrcmpiW(source_file, output_file) == 0)
+		{
+			print_message(std_err, "Error: Input and output file must not be the same!\n");
+			goto cleanup;
+		}
+	}
+
+	if(NOT_EMPTY(source_file) && (lstrcmpiW(source_file, L"-") != 0))
+	{
+		input = CreateFileW(source_file, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
 	}
 	else
 	{
@@ -519,31 +653,24 @@ static int _main(const int argc, const LPWSTR *const argv)
 		goto cleanup;
 	}
 
-	if((argc == 4U) && (lstrcmpiW(argv[3U], L"-") != 0) && (input != std_in))
+	if(EMPTY(output_file) && NOT_EMPTY(source_file) && (lstrcmpiW(source_file, L"-") != 0))
 	{
 		if(get_readonly_attribute(input))
 		{
-			print_message(std_err, "Error: The read-only file cannot be modified in-place!\n");
+			print_message(std_err, "Error: The write-protected file cannot be modified in-place!\n");
 			goto cleanup;
 		}
-		if(temp_path = get_directory_part(argv[3U]))
+		temp_file = generate_temp_file(temp_path = get_directory_part(source_file));
+		if(EMPTY(temp_file))
 		{
-			if(!(temp_file = generate_temp_file(temp_path)))
-			{
-				print_message(std_err, "Error: Failed to generate temp file name!\n");
-				goto cleanup;
-			}
-		}
-		else
-		{
-			print_message(std_err, "Error: Failed to determine temp directory!\n");
+			print_message(std_err, "Error: Failed to generate file name for temporary data!\n");
 			goto cleanup;
 		}
 	}
 
-	if(NOT_EMPTY(temp_file) || ((argc > 4U) && (lstrcmpiW(argv[4U], L"-") != 0)))
+	if(NOT_EMPTY(temp_file) || (NOT_EMPTY(output_file) && (lstrcmpiW(output_file, L"-") != 0)))
 	{
-		output = CreateFileW(NOT_EMPTY(temp_file) ? temp_file : argv[4U], GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
+		output = CreateFileW(NOT_EMPTY(temp_file) ? temp_file : output_file, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
 	}
 	else
 	{
@@ -559,13 +686,10 @@ static int _main(const int argc, const LPWSTR *const argv)
 	if(GetFileType(output) == FILE_TYPE_CHAR)
 	{
 		previous_output_cp = GetConsoleOutputCP();
-		if(previous_output_cp != CP_UTF8)
-		{
-			SetConsoleOutputCP(CP_UTF8);
-		}
+		SetConsoleOutputCP(options.ansi_cp ? CP_1252 : CP_UTF8);
 	}
 
-	if(!search_and_replace(input, output, needle, replacement))
+	if(!search_and_replace(input, output, needle, replacement, &options))
 	{
 		print_message(std_err, "Error: An I/O error was encountered. Output probably is incomplete!\n");
 		goto cleanup;
@@ -585,8 +709,9 @@ static int _main(const int argc, const LPWSTR *const argv)
 
 	if(NOT_EMPTY(temp_file))
 	{
-		if(!move_file(temp_file, argv[3U]))
+		if(!move_file(temp_file, source_file))
 		{
+			DeleteFileW(temp_file);
 			print_message(std_err, "Error: Failed to replace the original file!\n");
 			goto cleanup;
 		}
@@ -608,10 +733,6 @@ cleanup:
 
 	if(NOT_EMPTY(temp_file))
 	{
-		if(GetFileAttributesW(temp_file) != INVALID_FILE_ATTRIBUTES)
-		{
-			DeleteFileW(temp_file);
-		}
 	}
 
 	if(needle)
@@ -634,7 +755,7 @@ cleanup:
 		LocalFree((HLOCAL)temp_path);
 	}
 
-	if(previous_output_cp && (previous_output_cp != CP_UTF8))
+	if(previous_output_cp)
 	{
 		SetConsoleOutputCP(previous_output_cp);
 	}
