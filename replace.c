@@ -311,10 +311,10 @@ static __inline BOOL flush_pending_bytes(const HANDLE output, output_context_t *
 	return TRUE;
 }
 
-static __inline BOOL print_message(const HANDLE output, const BYTE *const text)
+static __inline BOOL print_message(const HANDLE output, const CHAR *const text)
 {
 	DWORD bytes_written;
-	return WriteFile(output, text, lstrlenA((LPCSTR)text), &bytes_written, NULL);
+	return WriteFile(output, text, lstrlenA(text), &bytes_written, NULL);
 }
 
 /* ======================================================================= */
@@ -462,8 +462,8 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const BY
 	const DWORD replacement_len = lstrlenA((LPCSTR)replacement);
 
 	BOOL success = FALSE, copy_remaining = FALSE;
+	ringbuffer_t *ringbuffer = NULL;
 	input_context_t *input_ctx = NULL; output_context_t *output_ctx  = NULL;
-	ringbuffer_t *ringbuffer;
 	BYTE char_input, char_output;
 
 	input_ctx = (input_context_t*) LocalAlloc(LPTR, sizeof(input_context_t));
@@ -770,7 +770,7 @@ cleanup:
 void startup(void)
 {
 	int argc;
-	UINT result = -1;
+	UINT result = (UINT)(-1);
 	LPWSTR *argv;
 
 	SetErrorMode(SetErrorMode(0x3) | 0x3);
