@@ -1,7 +1,9 @@
-/obj
+/*.aps
+/*.opensdf
+/*.sdf
+/*.suo
+/*.user
 /bin
 /ipch
-/*.suo
-/*.opensdf
-/*.user
-/*.sdf
+/obj
+/out

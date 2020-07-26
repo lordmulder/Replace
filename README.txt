@@ -11,6 +11,7 @@ Options:
   -s  Single replacement; replace only the *first* occurence instead of all
   -a  Process input using ANSI codepage (CP-1252) instead of UTF-8
   -f  Force immediate flushing of output buffers (may degrade performance)
+  -v  Enable verbose mode; prints additional diagnostic information
   -h  Display this help and exit
 
 Notes:

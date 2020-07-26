@@ -9,6 +9,10 @@
 #include <ShellAPI.h>
 #include <wincrypt.h>
 
+#define VERSION_MAJOR 1
+#define VERSION_MINOR 1
+#define VERSION_PATCH 0
+
 /* ======================================================================= */
 /* Utilities                                                               */
 /* ======================================================================= */
@@ -107,6 +111,17 @@ static void random_exit(random_t *const random_ctx)
 /* File System Routines                                                    */
 /* ======================================================================= */
 
+static BOOL path_exists(const WCHAR *const path)
+{
+	return (GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES);
+}
+
+static BOOL file_exists(const WCHAR *const path)
+{
+	const DWORD attribs = GetFileAttributesW(path);
+	return (attribs != INVALID_FILE_ATTRIBUTES) && (!(attribs & FILE_ATTRIBUTE_DIRECTORY));
+}
+
 static BOOL get_readonly_attribute(const HANDLE handle)
 {
 	BY_HANDLE_FILE_INFORMATION file_info;
@@ -174,7 +189,7 @@ static const WCHAR *generate_temp_file(const WCHAR *const directory)
 				if(random_next(&rndval, random_ctx))
 				{
 					wsprintfW(temp, RAND_TEMPLATE, prefix, rndval & RAND_MASK);
-					if(GetFileAttributesW(temp) == INVALID_FILE_ATTRIBUTES)
+					if(!path_exists(temp))
 					{
 						random_exit(&random_ctx);
 						return temp;
@@ -186,7 +201,7 @@ static const WCHAR *generate_temp_file(const WCHAR *const directory)
 		for(retry = 0U; retry <= RAND_MASK; ++retry)
 		{
 			wsprintfW(temp, RAND_TEMPLATE, prefix, retry);
-			if(GetFileAttributesW(temp) == INVALID_FILE_ATTRIBUTES)
+			if(!path_exists(temp))
 			{
 				return temp;
 			}
@@ -200,7 +215,7 @@ static const WCHAR *generate_temp_file(const WCHAR *const directory)
 static const BOOL move_file(const WCHAR *const file_src, const WCHAR *const file_dst)
 {
 	DWORD retry;
-	for(retry = 0U; retry < 97; ++retry)
+	for(retry = 0U; retry < 128; ++retry)
 	{
 		if(retry > 0U)
 		{
@@ -209,6 +224,30 @@ static const BOOL move_file(const WCHAR *const file_src, const WCHAR *const file
 		if(MoveFileEx(file_src, file_dst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH))
 		{
 			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+static const BOOL delete_file(const WCHAR *const file_path)
+{
+	DWORD retry;
+	for(retry = 0U; retry < 128; ++retry)
+	{
+		if(retry > 0U)
+		{
+			Sleep(retry); /*delay before retry*/
+		}
+		if(DeleteFileW(file_path))
+		{
+			return TRUE;
+		}
+		else
+		{
+			if(GetLastError() == ERROR_FILE_NOT_FOUND)
+			{
+				return TRUE;
+			}
 		}
 	}
 	return FALSE;
@@ -235,13 +274,16 @@ typedef struct output_context_t
 }
 output_context_t;
 
-static __inline BOOL read_next_byte(BYTE *const output, const HANDLE input, input_context_t *const ctx)
+static __inline BOOL read_next_byte(BYTE *const output, const HANDLE input, input_context_t *const ctx, BOOL *const error_flag)
 {
+	*error_flag = FALSE;
 	if(ctx->pos >= ctx->avail)
 	{
 		ctx->pos = 0U;
 		if(!ReadFile(input, ctx->buffer, BUFF_SIZE, &ctx->avail, NULL))
 		{
+			const DWORD error_code = GetLastError();
+			*error_flag = (error_code != ERROR_HANDLE_EOF) && (error_code != ERROR_BROKEN_PIPE);
 			return FALSE;
 		}
 		if(ctx->avail < 1U)
@@ -315,6 +357,21 @@ static __inline BOOL print_message(const HANDLE output, const CHAR *const text)
 {
 	DWORD bytes_written;
 	return WriteFile(output, text, lstrlenA(text), &bytes_written, NULL);
+}
+
+static BOOL print_message_fmt(const HANDLE output, const CHAR *const format, ...)
+{
+	CHAR temp[256U];
+	va_list ap;
+	int result;
+	va_start(ap, format);
+	result = wvsprintfA(temp, format, ap);
+	va_end(ap);
+	if(result > 0)
+	{
+		return print_message(output, temp);
+	}
+	return FALSE;
 }
 
 /* ======================================================================= */
@@ -401,6 +458,7 @@ typedef struct options_t
 	BOOL replace_once;
 	BOOL ansi_cp;
 	BOOL force_flush;
+	BOOL verbose;
 }
 options_t;
 
@@ -438,6 +496,9 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 				case L'f':
 					options->force_flush = TRUE;
 					break;
+				case L'v':
+					options->verbose = TRUE;
+					break;
 				default:
 					print_message(std_err, "Error: Invalid command-line option encountered!\n");
 					return FALSE;
@@ -456,15 +517,21 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 /* Search & Replace                                                        */
 /* ======================================================================= */
 
-static BOOL search_and_replace(const HANDLE input, const HANDLE output, const BYTE *const needle, const BYTE *const replacement, const options_t *const options)
+static const char *const WRITE_ERROR_MESSAGE = "Failed to write output data -> aborting!\n";
+static const char *const READ_ERROR_MESSAGE  = "Warning: Read operation failed -> input may be incomplete!\n";
+
+static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HANDLE std_err, const BYTE *const needle, const BYTE *const replacement, const options_t *const options)
 {
+
 	const DWORD needle_len = lstrlenA((LPCSTR)needle);
 	const DWORD replacement_len = lstrlenA((LPCSTR)replacement);
 
-	BOOL success = FALSE, copy_remaining = FALSE;
+	BOOL success = FALSE, pending_input = FALSE, error_flag = FALSE;
 	ringbuffer_t *ringbuffer = NULL;
 	input_context_t *input_ctx = NULL; output_context_t *output_ctx  = NULL;
 	BYTE char_input, char_output;
+	ULARGE_INTEGER position = { 0U, 0U };
+	DWORD replace_counter = 0U;
 
 	input_ctx = (input_context_t*) LocalAlloc(LPTR, sizeof(input_context_t));
 	if(!input_ctx)
@@ -484,50 +551,89 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const BY
 		goto finished;
 	}
 
-	while(read_next_byte(&char_input, input, input_ctx))
+	while(pending_input = read_next_byte(&char_input, input, input_ctx, &error_flag))
 	{
 		if(ringbuffer_put(char_input, &char_output, ringbuffer))
 		{
 			if(!write_next_byte(char_output, output, output_ctx, options->force_flush))
 			{
+				if(options->verbose)
+				{
+					print_message(std_err, WRITE_ERROR_MESSAGE);
+				}
 				goto finished; 
 			}
 		}
 		if(ringbuffer_compare(needle, needle_len, ringbuffer, options->case_insensitive))
 		{
+			++replace_counter;
 			ringbuffer_reset(ringbuffer);
+			if(options->verbose)
+			{
+				print_message_fmt(std_err, "Replaced occurence at: 0x%08lX%08lX\n", position.HighPart, position.LowPart);
+			}
 			if(!write_byte_array(replacement, replacement_len, output, output_ctx, options->force_flush))
 			{
+				if(options->verbose)
+				{
+					print_message(std_err, WRITE_ERROR_MESSAGE);
+				}
 				goto finished;
 			}
 			if(options->replace_once)
 			{
-				copy_remaining = TRUE;
+				if(options->verbose)
+				{
+					print_message(std_err, "Stopping search & replace after *first* match.\n");
+				}
 				break;
 			}
 		}
+		++position.QuadPart;
+	}
+
+	if(error_flag)
+	{
+		print_message(std_err, READ_ERROR_MESSAGE);
 	}
 
 	while(ringbuffer_flush(&char_output, ringbuffer))
 	{
 		if(!write_next_byte(char_output, output, output_ctx, options->force_flush))
 		{
+			if(options->verbose)
+			{
+				print_message(std_err, WRITE_ERROR_MESSAGE);
+			}
 			goto finished; 
 		}
 	}
 
-	if(copy_remaining)
+	if(pending_input)
 	{
-		while(read_next_byte(&char_input, input, input_ctx))
+		while(read_next_byte(&char_input, input, input_ctx, &error_flag))
 		{
 			if(!write_next_byte(char_input, output, output_ctx, options->force_flush))
 			{
+				if(options->verbose)
+				{
+					print_message(std_err, WRITE_ERROR_MESSAGE);
+				}
 				goto finished;
 			}
+		}
+		if(error_flag)
+		{
+			print_message(std_err, READ_ERROR_MESSAGE);
 		}
 	}
 
 	success = flush_pending_bytes(output, output_ctx);
+
+	if(options->verbose)
+	{
+		print_message_fmt(std_err, "Total occurences replaced: %lu\n", replace_counter);
+	}
 
 finished:
 
@@ -553,9 +659,13 @@ finished:
 /* Manpage                                                                 */
 /* ======================================================================= */
 
+#define __VERSION_STR__(X, Y, Z) #X "." #Y "." #Z
+#define _VERSION_STR_(X, Y, Z) __VERSION_STR__(X, Y, Z)
+#define VERSION_STR _VERSION_STR_(VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH)
+
 static void print_manpage(const HANDLE std_err)
 {
-	print_message(std_err, "Replace [" __DATE__ "], by LoRd_MuldeR <MuldeR2@GMX.de>\n\n");
+	print_message(std_err, "Replace v" VERSION_STR " [" __DATE__ "], by LoRd_MuldeR <MuldeR2@GMX.de>\n\n");
 	print_message(std_err, "Replaces all occurences of '<needle>' in '<input_file>' with '<replacement>'.\n");
 	print_message(std_err, "The modified contents are then written to '<output_file>'.\n\n");
 	print_message(std_err, "Usage:\n");
@@ -565,6 +675,7 @@ static void print_manpage(const HANDLE std_err)
 	print_message(std_err, "  -s  Single replacement; replace only the *first* occurence instead of all\n");
 	print_message(std_err, "  -a  Process input using ANSI codepage (CP-1252) instead of UTF-8\n");
 	print_message(std_err, "  -f  Force immediate flushing of output buffers (may degrade performance)\n");
+	print_message(std_err, "  -v  Enable verbose mode; prints additional diagnostic information\n");
 	print_message(std_err, "  -h  Display this help and exit\n\n");
 	print_message(std_err, "Notes:\n");
 	print_message(std_err, "  1. If *only* an '<input_file>' is specified, the file is modified in-place!\n");
@@ -590,6 +701,10 @@ static int _main(const int argc, const LPWSTR *const argv)
 	UINT previous_output_cp = 0U;
 	const WCHAR *source_file = NULL, *output_file = NULL, *temp_path = NULL, *temp_file = NULL;
 
+	/* -------------------------------------------------------- */
+	/* Parse options                                            */
+	/* -------------------------------------------------------- */
+
 	if(!parse_options(std_err, argc, argv, &param_offset, &options))
 	{
 		goto cleanup;
@@ -602,9 +717,13 @@ static int _main(const int argc, const LPWSTR *const argv)
 		goto cleanup;
 	}
 
+	/* -------------------------------------------------------- */
+	/* Parameter validation                                     */
+	/* -------------------------------------------------------- */
+
 	if(argc - param_offset < 2U)
 	{
-		print_message(std_err, "Error: Required parameters are missing! Type \"replace.exe -h\" for details!\n");
+		print_message(std_err, "Error: Required parameter is missing. Type \"replace -h\" for details!\n");
 		goto cleanup;
 	}
 
@@ -613,6 +732,22 @@ static int _main(const int argc, const LPWSTR *const argv)
 		print_message(std_err, "Error: Search string (needle) must not be empty!\n");
 		goto cleanup;
 	}
+
+	if((argc - param_offset > 2) && lstrlenW(argv[param_offset + 2]) < 1)
+	{
+		print_message(std_err, "Error: If input file is specified, it must not be an empty string!\n");
+		goto cleanup;
+	}
+
+	if((argc - param_offset > 3) && lstrlenW(argv[param_offset + 3]) < 1)
+	{
+		print_message(std_err, "Error: If output file is specified, it must not be an empty string!\n");
+		goto cleanup;
+	}
+
+	/* -------------------------------------------------------- */
+	/* Initialize search parameters and file names              */
+	/* -------------------------------------------------------- */
 
 	needle = utf16_to_bytes(argv[param_offset], options.ansi_cp ? CP_1252 : CP_UTF8);
 	if(!needle)
@@ -638,12 +773,20 @@ static int _main(const int argc, const LPWSTR *const argv)
 		}
 	}
 
+	/* -------------------------------------------------------- */
+	/* Open input and output files                              */
+	/* -------------------------------------------------------- */
+
 	if(NOT_EMPTY(source_file) && (lstrcmpiW(source_file, L"-") != 0))
 	{
 		input = CreateFileW(source_file, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
 	}
 	else
 	{
+		if(options.verbose)
+		{
+			print_message(std_err, "Reading input from STDIN stream.\n");
+		}
 		input = std_in;
 	}
 
@@ -655,6 +798,10 @@ static int _main(const int argc, const LPWSTR *const argv)
 
 	if(EMPTY(output_file) && NOT_EMPTY(source_file) && (lstrcmpiW(source_file, L"-") != 0))
 	{
+		if(options.verbose)
+		{
+			print_message(std_err, "Using in-place processing mode this time.\n");
+		}
 		if(get_readonly_attribute(input))
 		{
 			print_message(std_err, "Error: The write-protected file cannot be modified in-place!\n");
@@ -674,6 +821,10 @@ static int _main(const int argc, const LPWSTR *const argv)
 	}
 	else
 	{
+		if(options.verbose)
+		{
+			print_message(std_err, "Writing output to STDOUT stream.\n");
+		}
 		output = std_out;
 	}
 
@@ -683,17 +834,25 @@ static int _main(const int argc, const LPWSTR *const argv)
 		goto cleanup;
 	}
 
+	/* -------------------------------------------------------- */
+	/* Search & replace!                                        */
+	/* -------------------------------------------------------- */
+
 	if(GetFileType(output) == FILE_TYPE_CHAR)
 	{
 		previous_output_cp = GetConsoleOutputCP();
 		SetConsoleOutputCP(options.ansi_cp ? CP_1252 : CP_UTF8);
 	}
 
-	if(!search_and_replace(input, output, needle, replacement, &options))
+	if(!search_and_replace(input, output, std_err, needle, replacement, &options))
 	{
 		print_message(std_err, "Error: An I/O error was encountered. Output probably is incomplete!\n");
 		goto cleanup;
 	}
+
+	/* -------------------------------------------------------- */
+	/* Finishing touch                                          */
+	/* -------------------------------------------------------- */
 
 	if(input != std_in)
 	{
@@ -711,13 +870,16 @@ static int _main(const int argc, const LPWSTR *const argv)
 	{
 		if(!move_file(temp_file, source_file))
 		{
-			DeleteFileW(temp_file);
-			print_message(std_err, "Error: Failed to replace the original file!\n");
+			print_message(std_err, "Error: Failed to replace the original file with modified one!\n");
 			goto cleanup;
 		}
 	}
 
 	result = 0;
+
+	/* -------------------------------------------------------- */
+	/* Final clean-up                                           */
+	/* -------------------------------------------------------- */
 
 cleanup:
 
@@ -731,8 +893,9 @@ cleanup:
 		CloseHandle(output);
 	}
 
-	if(NOT_EMPTY(temp_file))
+	if(NOT_EMPTY(temp_file) && file_exists(temp_file))
 	{
+		delete_file(temp_file);
 	}
 
 	if(needle)
@@ -774,14 +937,11 @@ void startup(void)
 	LPWSTR *argv;
 
 	SetErrorMode(SetErrorMode(0x3) | 0x3);
-
-	argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-	if(!argv)
+	if(argv = CommandLineToArgvW(GetCommandLineW(), &argc))
 	{
-		ExitProcess(result);
+		result = _main(argc, argv);
+		LocalFree(argv);
 	}
 
-	result = _main(argc, argv);
-	LocalFree(argv);
 	ExitProcess(result);
 }
