@@ -19,7 +19,8 @@
 
 static __inline void increment(DWORD *const value, const DWORD limit)
 {
-	if((*value += 1U) >= limit)
+	*value += 1U;
+	if(*value >= limit)
 	{
 		*value = 0U;
 	}
@@ -35,6 +36,13 @@ static __inline DWORD add_mod(const DWORD value_a, const DWORD value_b, const DW
 	return result;
 }
 
+static __inline ULARGE_INTEGER make_uint64(const ULONGLONG value)
+{
+	ULARGE_INTEGER result;
+	result.QuadPart = value;
+	return result;
+}
+
 /* ======================================================================= */
 /* String Routines                                                         */
 /* ======================================================================= */
@@ -47,12 +55,16 @@ static __inline DWORD add_mod(const DWORD value_a, const DWORD value_b, const DW
 
 #define INVALID_CHAR 0xFF
 
-static BYTE *utf16_to_bytes(const WCHAR *const input, const UINT code_page)
+static BYTE *utf16_to_bytes(const WCHAR *const input, LONG *const length_out, const UINT code_page)
 {
 	BYTE *buffer;
 	DWORD buffer_size = 0U, result = 0U;
 
 	buffer_size = WideCharToMultiByte(code_page, 0, input, -1, NULL, 0, NULL, NULL);
+	if(buffer_size < 1U)
+	{
+		return NULL;
+	}
 
 	buffer = (BYTE*) LocalAlloc(LPTR, sizeof(BYTE) * buffer_size);
 	if(!buffer)
@@ -61,8 +73,9 @@ static BYTE *utf16_to_bytes(const WCHAR *const input, const UINT code_page)
 	}
 
 	result = WideCharToMultiByte(code_page, 0, input, -1, (LPSTR)buffer, buffer_size, NULL, NULL);
-	if((result > 0) && (result <= buffer_size))
+	if((result > 0U) && (result <= buffer_size))
 	{
+		*length_out = result - 1U;
 		return buffer;
 	}
 
@@ -95,7 +108,7 @@ static __inline BYTE decode_hex_char(const WCHAR c)
 	}
 }
 
-static BYTE *decode_hex_string(const WCHAR *input)
+static BYTE *decode_hex_string(const WCHAR *input, LONG *const length_out)
 {
 	DWORD len, pos;
 	BYTE *result;
@@ -127,6 +140,7 @@ static BYTE *decode_hex_string(const WCHAR *input)
 		result[pos] = (val[0U] << 4U) | val[1U];
 	}
 
+	*length_out = len;
 	return result;
 }
 
@@ -442,9 +456,9 @@ static BOOL print_message_fmt(const HANDLE output, const CHAR *const format, ...
 typedef struct ringbuffer_t
 { 
 	DWORD capacity;
-	DWORD valid;
-	DWORD flushed;
-	DWORD pos;
+	DWORD used;
+	DWORD index_wr;
+	DWORD index_rd;
 	BYTE buffer[];
 }
 ringbuffer_t;
@@ -455,55 +469,40 @@ static ringbuffer_t *ringbuffer_alloc(const DWORD size)
 	if(ringbuffer)
 	{
 		ringbuffer->capacity = size;
-		ringbuffer->pos = ringbuffer->valid = ringbuffer->flushed = 0U;
+		ringbuffer->index_wr = ringbuffer->index_rd = ringbuffer->used = 0U;
 		return ringbuffer;
 	}
 	return NULL;
 }
 
-static __inline void ringbuffer_reset(ringbuffer_t *const ringbuffer)
+static __inline BOOL ringbuffer_put(const BYTE data, ringbuffer_t *const ringbuffer)
 {
-	ringbuffer->pos = ringbuffer->valid = ringbuffer->flushed = 0U;
-}
-
-static __inline BOOL ringbuffer_put(const BYTE in, BYTE *const out, ringbuffer_t *const ringbuffer)
-{
-	*out = ringbuffer->buffer[ringbuffer->pos];
-	ringbuffer->buffer[ringbuffer->pos] = in;
-	increment(&ringbuffer->pos, ringbuffer->capacity);
-	if(ringbuffer->valid < ringbuffer->capacity)
+	if(ringbuffer->used < ringbuffer->capacity)
 	{
-		++ringbuffer->valid;
-		return FALSE;
-	}
-	return TRUE;
-}
-
-static __inline BOOL ringbuffer_compare(const BYTE *const needle, const DWORD needle_len, ringbuffer_t *const ringbuffer, const BOOL ignore_case)
-{
-	DWORD idx_needle, idx_buffer;
-	if(ringbuffer->valid != needle_len)
-	{
-		return FALSE;
-	}
-	for(idx_needle = 0U, idx_buffer = RB_INITIAL_POS(ringbuffer); idx_needle < needle_len; ++idx_needle, increment(&idx_buffer, ringbuffer->capacity))
-	{
-		if(!compare_char(ringbuffer->buffer[idx_buffer], needle[idx_needle], ignore_case))
-		{
-			return FALSE;
-		}
-	}
-	return TRUE;
-}
-
-static __inline BOOL ringbuffer_flush(BYTE *const out, ringbuffer_t *const ringbuffer)
-{
-	if(ringbuffer->flushed < ringbuffer->valid)
-	{
-		*out = ringbuffer->buffer[add_mod(RB_INITIAL_POS(ringbuffer), ringbuffer->flushed++, ringbuffer->capacity)];
+		ringbuffer->buffer[ringbuffer->index_wr] = data;
+		++ringbuffer->used;
+		increment(&ringbuffer->index_wr, ringbuffer->capacity);
 		return TRUE;
 	}
 	return FALSE;
+}
+
+static __inline BOOL ringbuffer_get(BYTE *const data_out, ringbuffer_t *const ringbuffer)
+{
+	if(ringbuffer->used > 0U)
+	{
+		*data_out = ringbuffer->buffer[ringbuffer->index_rd];
+		--ringbuffer->used;
+		increment(&ringbuffer->index_rd, ringbuffer->capacity);
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static __inline void ringbuffer_reset(ringbuffer_t *const ringbuffer)
+{
+	ringbuffer->index_wr = ringbuffer->index_rd = 0U;
+	ringbuffer->used = 0U;
 }
 
 /* ======================================================================= */
@@ -583,18 +582,36 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 static const char *const WR_ERROR_MESSAGE = "Write operation failed -> aborting!\n";
 static const char *const RD_ERROR_MESSAGE = "Read operation failed -> aborting!\n";
 
-static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HANDLE std_err, const BYTE *const needle, const BYTE *const replacement, const options_t *const options)
+static LONG *compute_prefixes(const BYTE *const needle, const LONG needle_len)
 {
+	LONG *prefix, i = 0L, j = -1L;
+	if(!(prefix = (LONG*) LocalAlloc(LPTR, sizeof(LONG) * needle_len)))
+	{
+		return NULL;
+	}
 
-	const DWORD needle_len = lstrlenA((LPCSTR)needle);
-	const DWORD replacement_len = lstrlenA((LPCSTR)replacement);
+	prefix[0U] = -1L;
+	while (i < needle_len)
+	{
+		while ((j >= 0) && (needle[i] != needle[j]))
+		{
+			j = prefix[j];
+		}
+		prefix[++i] = ++j;
+	}
 
+	return prefix;
+}
+
+static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HANDLE std_err, const BYTE *const needle, const LONG needle_len, const BYTE *const replacement, const LONG replacement_len, const options_t *const options)
+{
 	BOOL success = FALSE, pending_input = FALSE, error_flag = FALSE;
-	ringbuffer_t *ringbuffer = NULL;
 	input_context_t *input_ctx = NULL; output_context_t *output_ctx  = NULL;
-	BYTE char_input, char_output;
+	ringbuffer_t *ringbuffer = NULL;
 	ULARGE_INTEGER position = { 0U, 0U };
-	DWORD replace_counter = 0U;
+	DWORD replacement_count = 0U;
+	LONG *prefix = NULL, needle_pos = 0L, write_len = 0L;
+	BYTE char_input, char_output;
 
 	input_ctx = (input_context_t*) LocalAlloc(LPTR, sizeof(input_context_t));
 	if(!input_ctx)
@@ -614,23 +631,55 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 		goto finished;
 	}
 
+	prefix = compute_prefixes(needle, needle_len);
+	if(!prefix)
+	{
+		goto finished;
+	}
+	
+	/* process all available input data */
 	while(pending_input = read_next_byte(&char_input, input, input_ctx, &error_flag))
 	{
-		if(ringbuffer_put(char_input, &char_output, ringbuffer))
-		{
-			if(!write_next_byte(char_output, output, output_ctx, options->force_flush))
-			{
-				print_message(std_err, WR_ERROR_MESSAGE);
-				goto finished; 
-			}
+		/* add next character to buffer*/
+		++position.QuadPart;
+		if(!ringbuffer_put(char_input, ringbuffer))
+		{	
+			print_message(std_err, "Buffer overflow has been encountered!\n");
+			goto finished;
 		}
-		if(ringbuffer_compare(needle, needle_len, ringbuffer, options->case_insensitive))
+
+		/* if prefix cannot be extended, search for a shorter prefix */
+		while ((needle_pos >= 0) && (!compare_char(char_input, needle[needle_pos], options->case_insensitive)))
 		{
-			++replace_counter;
+			for(write_len = needle_pos - prefix[needle_pos]; write_len > 0L; --write_len)
+			{
+				if(ringbuffer_get(&char_output, ringbuffer))
+				{	
+					if(!write_next_byte(char_output, output, output_ctx, options->force_flush))
+					{
+						print_message(std_err, WR_ERROR_MESSAGE);
+						goto finished;
+					}
+				}
+				else
+				{
+					print_message(std_err, "Buffer underflow has been encountered!\n");
+					goto finished;
+				}
+			}
+			needle_pos = prefix[needle_pos];
+		}
+
+		/* if a full match has been found, write the replacement instead */
+		if (++needle_pos >= needle_len)
+		{
+			++replacement_count;
+			needle_pos = 0U;
 			ringbuffer_reset(ringbuffer);
 			if(options->verbose)
 			{
-				print_message_fmt(std_err, "Replaced occurence at: 0x%08lX%08lX\n", position.HighPart, position.LowPart);
+				const ULARGE_INTEGER match_start = make_uint64(position.QuadPart - needle_len);
+				print_message_fmt(std_err, "Replaced occurence at offset: 0x%08lX%08lX\n", match_start.HighPart, match_start.LowPart);
 			}
 			if(!write_byte_array(replacement, replacement_len, output, output_ctx, options->force_flush))
 			{
@@ -646,17 +695,11 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 				break;
 			}
 		}
-		++position.QuadPart;
 	}
 
-	if(error_flag)
-	{
-		print_message(std_err, RD_ERROR_MESSAGE);
-		goto finished;
-	}
-
-	while(ringbuffer_flush(&char_output, ringbuffer))
-	{
+	/* write any pending data */
+	while(ringbuffer_get(&char_output, ringbuffer))
+	{	
 		if(!write_next_byte(char_output, output, output_ctx, options->force_flush))
 		{
 			print_message(std_err, WR_ERROR_MESSAGE);
@@ -664,6 +707,7 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 		}
 	}
 
+	/* transfer any input data not processed yet */
 	if(pending_input)
 	{
 		while(read_next_byte(&char_input, input, input_ctx, &error_flag))
@@ -674,18 +718,21 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 				goto finished;
 			}
 		}
-		if(error_flag)
-		{
-			print_message(std_err, RD_ERROR_MESSAGE);
-			goto finished;
-		}
 	}
 
+	/* check for any previous read errors */
+	if(error_flag)
+	{
+		print_message(std_err, RD_ERROR_MESSAGE);
+		goto finished;
+	}
+
+	/* flush output buffers*/
 	success = flush_pending_bytes(output, output_ctx);
 
 	if(options->verbose)
 	{
-		print_message_fmt(std_err, "Total occurences replaced: %lu\n", replace_counter);
+		print_message_fmt(std_err, "Total occurences replaced: %lu\n", replacement_count);
 	}
 
 finished:
@@ -703,6 +750,11 @@ finished:
 	if(ringbuffer)
 	{
 		LocalFree(ringbuffer);
+	}
+
+	if(prefix)
+	{
+		LocalFree(prefix);
 	}
 
 	return success;
@@ -755,6 +807,7 @@ static int _main(const int argc, const LPWSTR *const argv)
 	HANDLE std_in = GetStdHandle(STD_INPUT_HANDLE), std_out = GetStdHandle(STD_OUTPUT_HANDLE), std_err = GetStdHandle(STD_ERROR_HANDLE);
 	HANDLE input = INVALID_HANDLE_VALUE, output = INVALID_HANDLE_VALUE;
 	UINT previous_output_cp = 0U;
+	LONG needle_len = 0L, replacement_len = 0L;
 	const WCHAR *source_file = NULL, *output_file = NULL, *temp_path = NULL, *temp_file = NULL;
 
 	/* -------------------------------------------------------- */
@@ -811,14 +864,14 @@ static int _main(const int argc, const LPWSTR *const argv)
 	/* Initialize search parameters and file names              */
 	/* -------------------------------------------------------- */
 
-	needle = options.binary_mode ? decode_hex_string(argv[param_offset]) : utf16_to_bytes(argv[param_offset], options.ansi_cp ? CP_1252 : CP_UTF8);
+	needle = options.binary_mode ? decode_hex_string(argv[param_offset], &needle_len) : utf16_to_bytes(argv[param_offset], &needle_len, options.ansi_cp ? CP_1252 : CP_UTF8);
 	if(!needle)
 	{
 		print_message(std_err, "Error: Failed to decode 'needle' string!\n");
 		goto cleanup;
 	}
 
-	replacement = options.binary_mode ? decode_hex_string(argv[param_offset + 1U]) : utf16_to_bytes(argv[param_offset + 1U], options.ansi_cp ? CP_1252 : CP_UTF8);
+	replacement = options.binary_mode ? decode_hex_string(argv[param_offset + 1U], &replacement_len) : utf16_to_bytes(argv[param_offset + 1U], &replacement_len, options.ansi_cp ? CP_1252 : CP_UTF8);
 	if(!replacement)
 	{
 		print_message(std_err, "Error: Failed to decode 'replacement' string!\n");
@@ -908,7 +961,7 @@ static int _main(const int argc, const LPWSTR *const argv)
 		SetConsoleOutputCP(options.ansi_cp ? CP_1252 : CP_UTF8);
 	}
 
-	if(!search_and_replace(input, output, std_err, needle, replacement, &options))
+	if(!search_and_replace(input, output, std_err, needle, needle_len, replacement, replacement_len, &options))
 	{
 		print_message(std_err, "Error: An I/O error was encountered. Output probably is incomplete!\n");
 		goto cleanup;
