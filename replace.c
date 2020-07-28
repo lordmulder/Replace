@@ -17,23 +17,13 @@
 /* Utilities                                                               */
 /* ======================================================================= */
 
-static __inline void increment(DWORD *const value, const DWORD limit)
+static __inline void increment(LONG *const value, const LONG limit)
 {
 	*value += 1U;
 	if(*value >= limit)
 	{
 		*value = 0U;
 	}
-}
-
-static __inline DWORD add_mod(const DWORD value_a, const DWORD value_b, const DWORD limit)
-{
-	DWORD result = value_a + value_b;
-	while(result >= limit)
-	{
-		result -= limit;
-	}
-	return result;
 }
 
 static __inline ULARGE_INTEGER make_uint64(const ULONGLONG value)
@@ -455,22 +445,25 @@ static BOOL print_message_fmt(const HANDLE output, const CHAR *const format, ...
 
 typedef struct ringbuffer_t
 { 
-	DWORD capacity;
-	DWORD used;
-	DWORD index_wr;
-	DWORD index_rd;
+	LONG capacity;
+	LONG used;
+	LONG index_wr;
+	LONG index_rd;
 	BYTE buffer[];
 }
 ringbuffer_t;
 
-static ringbuffer_t *ringbuffer_alloc(const DWORD size)
+static ringbuffer_t *ringbuffer_alloc(const LONG size)
 {
-	ringbuffer_t *const ringbuffer = (ringbuffer_t*) LocalAlloc(LPTR, sizeof(ringbuffer_t) + (sizeof(BYTE) * size));
-	if(ringbuffer)
+	if(size > 0L)
 	{
-		ringbuffer->capacity = size;
-		ringbuffer->index_wr = ringbuffer->index_rd = ringbuffer->used = 0U;
-		return ringbuffer;
+		ringbuffer_t *const ringbuffer = (ringbuffer_t*) LocalAlloc(LPTR, sizeof(ringbuffer_t) + (sizeof(BYTE) * size));
+		if(ringbuffer)
+		{
+			ringbuffer->capacity = size;
+			ringbuffer->index_wr = ringbuffer->index_rd = ringbuffer->used = 0U;
+			return ringbuffer;
+		}
 	}
 	return NULL;
 }
@@ -610,7 +603,7 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 	ringbuffer_t *ringbuffer = NULL;
 	ULARGE_INTEGER position = { 0U, 0U };
 	DWORD replacement_count = 0U;
-	LONG *prefix = NULL, needle_pos = 0L, write_len = 0L;
+	LONG *prefix = NULL, needle_pos = 0L;
 	BYTE char_input, char_output;
 
 	input_ctx = (input_context_t*) LocalAlloc(LPTR, sizeof(input_context_t));
@@ -642,7 +635,7 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 	{
 		/* add next character to buffer*/
 		++position.QuadPart;
-		if(!ringbuffer_put(char_input, ringbuffer))
+		if (!ringbuffer_put(char_input, ringbuffer))
 		{	
 			print_message(std_err, "Buffer overflow has been encountered!\n");
 			goto finished;
@@ -651,27 +644,30 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 		/* if prefix cannot be extended, search for a shorter prefix */
 		while ((needle_pos >= 0) && (!compare_char(char_input, needle[needle_pos], options->case_insensitive)))
 		{
-			for(write_len = needle_pos - prefix[needle_pos]; write_len > 0L; --write_len)
-			{
-				if(ringbuffer_get(&char_output, ringbuffer))
-				{	
-					if(!write_next_byte(char_output, output, output_ctx, options->force_flush))
-					{
-						print_message(std_err, WR_ERROR_MESSAGE);
-						goto finished;
-					}
-				}
-				else
-				{
-					print_message(std_err, "Buffer underflow has been encountered!\n");
-					goto finished;
-				}
-			}
 			needle_pos = prefix[needle_pos];
 		}
 
+		/* flush any data *before* start of the current prefix from buffer*/
+		++needle_pos;
+		while (ringbuffer->used > needle_pos)
+		{
+			if(ringbuffer_get(&char_output, ringbuffer))
+			{	
+				if(!write_next_byte(char_output, output, output_ctx, options->force_flush))
+				{
+					print_message(std_err, WR_ERROR_MESSAGE);
+					goto finished;
+				}
+			}
+			else
+			{
+				print_message(std_err, "Buffer underflow has been encountered!\n");
+				goto finished;
+			}
+		}
+
 		/* if a full match has been found, write the replacement instead */
-		if (++needle_pos >= needle_len)
+		if (needle_pos >= needle_len)
 		{
 			++replacement_count;
 			needle_pos = 0U;
@@ -842,19 +838,31 @@ static int _main(const int argc, const LPWSTR *const argv)
 		goto cleanup;
 	}
 
-	if(lstrlenW(argv[param_offset]) < 1)
+	if(!argv[param_offset][0U])
 	{
 		print_message(std_err, "Error: Search string (needle) must not be empty!\n");
 		goto cleanup;
 	}
 
-	if((argc - param_offset > 2) && lstrlenW(argv[param_offset + 2]) < 1)
+	if(lstrlenW(argv[param_offset]) > MAXWORD)
+	{
+		print_message(std_err, "Error: Search string (needle) must not exceed 65535 characters!\n");
+		goto cleanup;
+	}
+
+	if(lstrlenW(argv[param_offset + 1L]) > MAXWORD)
+	{
+		print_message(std_err, "Error: Replacement string must not exceed 65535 characters!\n");
+		goto cleanup;
+	}
+
+	if((argc - param_offset > 2) && (!argv[param_offset + 2L][0U]))
 	{
 		print_message(std_err, "Error: If input file is specified, it must not be an empty string!\n");
 		goto cleanup;
 	}
 
-	if((argc - param_offset > 3) && lstrlenW(argv[param_offset + 3]) < 1)
+	if((argc - param_offset > 3) && (!argv[param_offset + 3L][0U]))
 	{
 		print_message(std_err, "Error: If output file is specified, it must not be an empty string!\n");
 		goto cleanup;
