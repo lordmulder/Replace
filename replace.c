@@ -10,7 +10,7 @@
 #include <wincrypt.h>
 
 #define VERSION_MAJOR 1
-#define VERSION_MINOR 1
+#define VERSION_MINOR 2
 #define VERSION_PATCH 0
 
 /* ======================================================================= */
@@ -45,6 +45,8 @@ static __inline DWORD add_mod(const DWORD value_a, const DWORD value_b, const DW
 #define NOT_EMPTY(STR) ((STR) && ((STR)[0U]))
 #define EMPTY(STR) (!NOT_EMPTY(STR))
 
+#define INVALID_CHAR 0xFF
+
 static BYTE *utf16_to_bytes(const WCHAR *const input, const UINT code_page)
 {
 	BYTE *buffer;
@@ -71,6 +73,61 @@ static BYTE *utf16_to_bytes(const WCHAR *const input, const UINT code_page)
 static __inline BOOL compare_char(const BYTE char_a, const BYTE char_b, const BOOL ignore_case)
 {
 	return ignore_case ? (TO_UPPER(char_a) == TO_UPPER(char_b)) : (char_a == char_b);
+}
+
+static __inline BYTE decode_hex_char(const WCHAR c)
+{
+	if ((c >= L'0') && (c <= L'9'))
+	{
+		return (BYTE)(c - L'0');
+	}
+	else if ((c >= L'A') && (c <= L'F'))
+	{
+		return (BYTE)(c - L'A' + 10);
+	}
+	else if ((c >= L'a') && (c <= L'f'))
+	{
+		return (BYTE)(c - L'a' + 10);
+	}
+	else
+	{
+		return INVALID_CHAR;
+	}
+}
+
+static BYTE *decode_hex_string(const WCHAR *input)
+{
+	DWORD len, pos;
+	BYTE *result;
+
+	if((input[0U] == L'0') && (input[1U] == L'x'))
+	{
+		input += 2U;
+	}
+
+	len = lstrlenW(input);
+	if((len < 1U) || ((len % 2U) != 0U))
+	{
+		return NULL;
+	}
+
+	if(!(result = (BYTE*) LocalAlloc(LPTR, sizeof(BYTE) * (len /= 2U))))
+	{
+		return NULL;
+	}
+
+	for(pos = 0U; pos < len; ++pos, input += 2U)
+	{
+		const BYTE val[] = { decode_hex_char(input[0U]), decode_hex_char(input[1U]) };
+		if((val[0U] == INVALID_CHAR) || (val[1U] == INVALID_CHAR))
+		{
+			LocalFree(result);
+			return NULL;
+		}
+		result[pos] = (val[0U] << 4U) | val[1U];
+	}
+
+	return result;
 }
 
 /* ======================================================================= */
@@ -276,14 +333,16 @@ output_context_t;
 
 static __inline BOOL read_next_byte(BYTE *const output, const HANDLE input, input_context_t *const ctx, BOOL *const error_flag)
 {
-	*error_flag = FALSE;
 	if(ctx->pos >= ctx->avail)
 	{
 		ctx->pos = 0U;
 		if(!ReadFile(input, ctx->buffer, BUFF_SIZE, &ctx->avail, NULL))
 		{
 			const DWORD error_code = GetLastError();
-			*error_flag = (error_code != ERROR_HANDLE_EOF) && (error_code != ERROR_BROKEN_PIPE);
+			if((error_code != ERROR_HANDLE_EOF) && (error_code != ERROR_BROKEN_PIPE))
+			{
+				*error_flag = TRUE;
+			}
 			return FALSE;
 		}
 		if(ctx->avail < 1U)
@@ -459,6 +518,7 @@ typedef struct options_t
 	BOOL ansi_cp;
 	BOOL force_flush;
 	BOOL verbose;
+	BOOL binary_mode;
 }
 options_t;
 
@@ -499,6 +559,9 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 				case L'v':
 					options->verbose = TRUE;
 					break;
+				case L'b':
+					options->binary_mode = TRUE;
+					break;
 				default:
 					print_message(std_err, "Error: Invalid command-line option encountered!\n");
 					return FALSE;
@@ -517,8 +580,8 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 /* Search & Replace                                                        */
 /* ======================================================================= */
 
-static const char *const WRITE_ERROR_MESSAGE = "Failed to write output data -> aborting!\n";
-static const char *const READ_ERROR_MESSAGE  = "Warning: Read operation failed -> input may be incomplete!\n";
+static const char *const WR_ERROR_MESSAGE = "Write operation failed -> aborting!\n";
+static const char *const RD_ERROR_MESSAGE = "Read operation failed -> aborting!\n";
 
 static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HANDLE std_err, const BYTE *const needle, const BYTE *const replacement, const options_t *const options)
 {
@@ -557,10 +620,7 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 		{
 			if(!write_next_byte(char_output, output, output_ctx, options->force_flush))
 			{
-				if(options->verbose)
-				{
-					print_message(std_err, WRITE_ERROR_MESSAGE);
-				}
+				print_message(std_err, WR_ERROR_MESSAGE);
 				goto finished; 
 			}
 		}
@@ -574,10 +634,7 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 			}
 			if(!write_byte_array(replacement, replacement_len, output, output_ctx, options->force_flush))
 			{
-				if(options->verbose)
-				{
-					print_message(std_err, WRITE_ERROR_MESSAGE);
-				}
+				print_message(std_err, WR_ERROR_MESSAGE);
 				goto finished;
 			}
 			if(options->replace_once)
@@ -594,18 +651,16 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 
 	if(error_flag)
 	{
-		print_message(std_err, READ_ERROR_MESSAGE);
+		print_message(std_err, RD_ERROR_MESSAGE);
+		goto finished;
 	}
 
 	while(ringbuffer_flush(&char_output, ringbuffer))
 	{
 		if(!write_next_byte(char_output, output, output_ctx, options->force_flush))
 		{
-			if(options->verbose)
-			{
-				print_message(std_err, WRITE_ERROR_MESSAGE);
-			}
-			goto finished; 
+			print_message(std_err, WR_ERROR_MESSAGE);
+			goto finished;
 		}
 	}
 
@@ -615,16 +670,14 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 		{
 			if(!write_next_byte(char_input, output, output_ctx, options->force_flush))
 			{
-				if(options->verbose)
-				{
-					print_message(std_err, WRITE_ERROR_MESSAGE);
-				}
+				print_message(std_err, WR_ERROR_MESSAGE);
 				goto finished;
 			}
 		}
 		if(error_flag)
 		{
-			print_message(std_err, READ_ERROR_MESSAGE);
+			print_message(std_err, RD_ERROR_MESSAGE);
+			goto finished;
 		}
 	}
 
@@ -666,25 +719,28 @@ finished:
 static void print_manpage(const HANDLE std_err)
 {
 	print_message(std_err, "Replace v" VERSION_STR " [" __DATE__ "], by LoRd_MuldeR <MuldeR2@GMX.de>\n\n");
-	print_message(std_err, "Replaces all occurences of '<needle>' in '<input_file>' with '<replacement>'.\n");
+	print_message(std_err, "Replaces any occurrence of '<needle>' in '<input_file>' with '<replacement>'.\n");
 	print_message(std_err, "The modified contents are then written to '<output_file>'.\n\n");
 	print_message(std_err, "Usage:\n");
 	print_message(std_err, "  replace.exe [options] <needle> <replacement> [<input_file>] [<output_file>]\n\n");
 	print_message(std_err, "Options:\n");
 	print_message(std_err, "  -i  Perform case-insensitive matching for the characters 'A' to 'Z'\n");
-	print_message(std_err, "  -s  Single replacement; replace only the *first* occurence instead of all\n");
+	print_message(std_err, "  -s  Single replacement; replace only the *first* occurrence instead of all\n");
 	print_message(std_err, "  -a  Process input using ANSI codepage (CP-1252) instead of UTF-8\n");
-	print_message(std_err, "  -f  Force immediate flushing of output buffers (may degrade performance)\n");
+	print_message(std_err, "  -b  Binary mode; parameters '<needle>' and '<replacement>' are Hex strings\n");
 	print_message(std_err, "  -v  Enable verbose mode; prints additional diagnostic information\n");
+	print_message(std_err, "  -f  Force immediate flushing of output buffers (may degrade performance)\n");
 	print_message(std_err, "  -h  Display this help and exit\n\n");
 	print_message(std_err, "Notes:\n");
 	print_message(std_err, "  1. If *only* an '<input_file>' is specified, the file is modified in-place!\n");
 	print_message(std_err, "  2. If file names are omitted, reads from STDIN and writes to STDOUT.\n");
-	print_message(std_err, "  3. File name can be specified as \"-\" to read from STDIN or write to STDOUT.\n\n");
+	print_message(std_err, "  3. File name can be specified as \"-\" to read from STDIN or write to STDOUT.\n");
+	print_message(std_err, "  4. The length of a Hex string must be *even*; with optional '0x' prefix.\n\n");
 	print_message(std_err, "Examples:\n");
-	print_message(std_err, "  replace.exe \"foo\" \"bar\" \"input.txt\" \"output.txt\"\n");
-	print_message(std_err, "  replace.exe \"foo\" \"bar\" \"modify-me.txt\"\n");
-	print_message(std_err, "  type \"input.txt\" | replace.exe \"foo\" \"bar\" > \"output.txt\"\n\n");
+	print_message(std_err, "  replace.exe \"foobar\" \"quux\" \"input.txt\" \"output.txt\"\n");
+	print_message(std_err, "  replace.exe \"foobar\" \"quux\" \"modified.txt\"\n");
+	print_message(std_err, "  replace.exe -b 0xDEADBEEF 0xCAFEBABE \"input.bin\" \"output.bin\"\n");
+	print_message(std_err, "  type \"from.txt\" | replace.exe \"foo\" \"bar\" > \"to.txt\"\n\n");
 }
 
 /* ======================================================================= */
@@ -721,6 +777,12 @@ static int _main(const int argc, const LPWSTR *const argv)
 	/* Parameter validation                                     */
 	/* -------------------------------------------------------- */
 
+	if(options.binary_mode && (options.ansi_cp || options.case_insensitive))
+	{
+		print_message(std_err, "Error: Options '-i' and '-a' are incompatible with '-b' option!\n");
+		goto cleanup;
+	}
+
 	if(argc - param_offset < 2U)
 	{
 		print_message(std_err, "Error: Required parameter is missing. Type \"replace -h\" for details!\n");
@@ -749,20 +811,22 @@ static int _main(const int argc, const LPWSTR *const argv)
 	/* Initialize search parameters and file names              */
 	/* -------------------------------------------------------- */
 
-	needle = utf16_to_bytes(argv[param_offset], options.ansi_cp ? CP_1252 : CP_UTF8);
+	needle = options.binary_mode ? decode_hex_string(argv[param_offset]) : utf16_to_bytes(argv[param_offset], options.ansi_cp ? CP_1252 : CP_UTF8);
 	if(!needle)
 	{
+		print_message(std_err, "Error: Failed to decode 'needle' string!\n");
 		goto cleanup;
 	}
 
-	replacement = utf16_to_bytes(argv[param_offset + 1], options.ansi_cp ? CP_1252 : CP_UTF8);
+	replacement = options.binary_mode ? decode_hex_string(argv[param_offset + 1U]) : utf16_to_bytes(argv[param_offset + 1U], options.ansi_cp ? CP_1252 : CP_UTF8);
 	if(!replacement)
 	{
+		print_message(std_err, "Error: Failed to decode 'replacement' string!\n");
 		goto cleanup;
 	}
 
-	source_file = (argc - param_offset > 2) ? argv[param_offset + 2] : NULL;
-	output_file = (argc - param_offset > 3) ? argv[param_offset + 3] : NULL;
+	source_file = (argc - param_offset > 2U) ? argv[param_offset + 2U] : NULL;
+	output_file = (argc - param_offset > 3U) ? argv[param_offset + 3U] : NULL;
 
 	if(NOT_EMPTY(source_file) && NOT_EMPTY(output_file) && (lstrcmpiW(source_file, L"-") != 0) && (lstrcmpiW(output_file, L"-") != 0))
 	{
