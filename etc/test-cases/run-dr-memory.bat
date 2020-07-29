@@ -34,5 +34,8 @@ copy /Y "src\input-1.txt" "out\output-1i.txt"
 "%DR_MEMORY_PATH%" "%EXE_PATH%"    "White Rabbit" "Cheshire Cat" "src\input-2.txt" "out\output-2c.txt"
 "%DR_MEMORY_PATH%" "%EXE_PATH%" -s "White Rabbit" "Cheshire Cat" "src\input-2.txt" "out\output-2d.txt"
 
+::"%DR_MEMORY_PATH%" -debug "%EXE_PATH%" "ttttcattct" "quux" "src\input-3.txt" "out\output-3a.txt"
+::"%DR_MEMORY_PATH%" -debug "%EXE_PATH%" "ggaattcagc" "quux" "src\input-3.txt" "out\output-3b.txt"
+
 echo.
 pause

@@ -33,6 +33,9 @@ copy /Y "src\input-1.txt" "out\output-1i.txt"
 "%EXE_PATH%"    "White Rabbit" "Cheshire Cat" "src\input-2.txt" "out\output-2c.txt"
 "%EXE_PATH%" -s "White Rabbit" "Cheshire Cat" "src\input-2.txt" "out\output-2d.txt"
 
+"%EXE_PATH%" "ttttcattct" "quux" "src\input-3.txt" "out\output-3a.txt"
+"%EXE_PATH%" "ggaattcagc" "quux" "src\input-3.txt" "out\output-3b.txt"
+
 REM --------------------------------------------------------------------------
 REM VERIFY
 REM --------------------------------------------------------------------------
