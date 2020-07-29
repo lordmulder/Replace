@@ -1,7 +1,11 @@
-/************************************************************************* */
-/* Replace, by LoRd_MuldeR <MuldeR2@GMX.de>                                */
-/* This work has been released under the CC0 1.0 Universal license!        */
-/************************************************************************* */
+/******************************************************************************/
+/* Replace, by LoRd_MuldeR <MuldeR2@GMX.de>                                   */
+/* This work has been released under the CC0 1.0 Universal license!           */
+/*                                                                            */
+/* This program implements a variant of the "KMP" string-searching algorithm. */
+/* See here for information:                                                  */
+/* https://en.wikipedia.org/wiki/Knuth%E2%80%93Morris%E2%80%93Pratt_algorithm */
+/******************************************************************************/
 
 #define WIN32_LEAN_AND_MEAN 1
 
@@ -12,6 +16,14 @@
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 2
 #define VERSION_PATCH 0
+
+#ifdef _DEBUG
+#define HAVE_TRACE 1
+#define TRACE(OUT, FMT, ...) print_message_fmt((OUT), "[DEBUG] " FMT, __VA_ARGS__)
+#else
+#define HAVE_TRACE 0
+#define TRACE(OUT, FMT, ...) __noop()
+#endif
 
 /* ======================================================================= */
 /* Utilities                                                               */
@@ -398,7 +410,7 @@ static __inline BOOL write_byte_array(const BYTE *const input, const DWORD input
 	return TRUE;
 }
 
-static __inline BOOL flush_pending_bytes(const HANDLE output, output_context_t *const ctx)
+static __inline BOOL flush_pending_bytes(const HANDLE output, output_context_t *const ctx, const BOOL sync)
 {
 	if(ctx->pos > 0)
 	{
@@ -411,7 +423,10 @@ static __inline BOOL flush_pending_bytes(const HANDLE output, output_context_t *
 		{
 			return FALSE;
 		}
-		FlushFileBuffers(output);
+		if(sync)
+		{
+			FlushFileBuffers(output);
+		}
 	}
 	return TRUE;
 }
@@ -508,7 +523,7 @@ typedef struct options_t
 	BOOL case_insensitive;
 	BOOL replace_once;
 	BOOL ansi_cp;
-	BOOL force_flush;
+	BOOL force_sync;
 	BOOL verbose;
 	BOOL binary_mode;
 }
@@ -546,7 +561,7 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 					options->ansi_cp = TRUE;
 					break;
 				case L'f':
-					options->force_flush = TRUE;
+					options->force_sync = TRUE;
 					break;
 				case L'v':
 					options->verbose = TRUE;
@@ -575,22 +590,32 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 static const char *const WR_ERROR_MESSAGE = "Write operation failed -> aborting!\n";
 static const char *const RD_ERROR_MESSAGE = "Read operation failed -> aborting!\n";
 
-static LONG *compute_prefixes(const BYTE *const needle, const LONG needle_len)
+static LONG *compute_prefixes(const HANDLE std_err, const BYTE *const needle, const LONG needle_len)
 {
-	LONG *prefix, i = 0L, j = -1L;
-	if(!(prefix = (LONG*) LocalAlloc(LPTR, sizeof(LONG) * needle_len)))
+	LONG *prefix, needle_pos = 0L, prefix_len = -1L;
+	if(!(prefix = (LONG*) LocalAlloc(LPTR, sizeof(LONG) * (needle_len + 1L))))
 	{
 		return NULL;
 	}
 
 	prefix[0U] = -1L;
-	while (i < needle_len)
+	while (needle_pos < needle_len)
 	{
-		while ((j >= 0) && (needle[i] != needle[j]))
+		while ((prefix_len >= 0) && (needle[needle_pos] != needle[prefix_len]))
 		{
-			j = prefix[j];
+			prefix_len = prefix[prefix_len];
 		}
-		prefix[++i] = ++j;
+		prefix[++needle_pos] = ++prefix_len;
+	}
+
+	if(HAVE_TRACE)
+	{
+		print_message(std_err, "[DEBUG] prefix: ");
+		for(needle_pos = 0U; needle_pos < needle_len; ++needle_pos)
+		{
+			print_message_fmt(std_err, (needle_pos > 0L) ? ", %ld" : "%ld", prefix[needle_pos]);
+		}
+		print_message(std_err, "\n");
 	}
 
 	return prefix;
@@ -624,12 +649,12 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 		goto finished;
 	}
 
-	prefix = compute_prefixes(needle, needle_len);
+	prefix = compute_prefixes(std_err, needle, needle_len);
 	if(!prefix)
 	{
 		goto finished;
 	}
-	
+
 	/* process all available input data */
 	while(pending_input = read_next_byte(&char_input, input, input_ctx, &error_flag))
 	{
@@ -637,13 +662,18 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 		++position.QuadPart;
 		if (!ringbuffer_put(char_input, ringbuffer))
 		{	
-			print_message(std_err, "Buffer overflow has been encountered!\n");
+			print_message(std_err, "Buffer overflow has been encountered! [Internal Error]\n");
 			goto finished;
 		}
+
+		/* dump the initial status */
+		TRACE(std_err, "buffer_old: %ld\n", ringbuffer->used);
+		TRACE(std_err, "needle_old: %ld\n", needle_pos);
 
 		/* if prefix cannot be extended, search for a shorter prefix */
 		while ((needle_pos >= 0) && (!compare_char(char_input, needle[needle_pos], options->case_insensitive)))
 		{
+			TRACE(std_err, "mismatched: %ld --> %ld\n", needle_pos, prefix[needle_pos]);
 			needle_pos = prefix[needle_pos];
 		}
 
@@ -653,18 +683,17 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 		{
 			if(ringbuffer_get(&char_output, ringbuffer))
 			{	
-				if(!write_next_byte(char_output, output, output_ctx, options->force_flush))
+				if(!write_next_byte(char_output, output, output_ctx, options->force_sync))
 				{
 					print_message(std_err, WR_ERROR_MESSAGE);
 					goto finished;
 				}
 			}
-			else
-			{
-				print_message(std_err, "Buffer underflow has been encountered!\n");
-				goto finished;
-			}
 		}
+
+		/* dump the updated status */
+		TRACE(std_err, "buffer_new: %ld\n", ringbuffer->used);
+		TRACE(std_err, "needle_new: %ld\n", needle_pos);
 
 		/* if a full match has been found, write the replacement instead */
 		if (needle_pos >= needle_len)
@@ -677,7 +706,7 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 				const ULARGE_INTEGER match_start = make_uint64(position.QuadPart - needle_len);
 				print_message_fmt(std_err, "Replaced occurence at offset: 0x%08lX%08lX\n", match_start.HighPart, match_start.LowPart);
 			}
-			if(!write_byte_array(replacement, replacement_len, output, output_ctx, options->force_flush))
+			if(!write_byte_array(replacement, replacement_len, output, output_ctx, options->force_sync))
 			{
 				print_message(std_err, WR_ERROR_MESSAGE);
 				goto finished;
@@ -693,10 +722,14 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 		}
 	}
 
+	/* dump the final status */
+	TRACE(std_err, "buffer_fin: %ld\n", ringbuffer->used);
+	TRACE(std_err, "needle_fin: %ld\n", needle_pos);
+
 	/* write any pending data */
 	while(ringbuffer_get(&char_output, ringbuffer))
 	{	
-		if(!write_next_byte(char_output, output, output_ctx, options->force_flush))
+		if(!write_next_byte(char_output, output, output_ctx, options->force_sync))
 		{
 			print_message(std_err, WR_ERROR_MESSAGE);
 			goto finished;
@@ -708,7 +741,7 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 	{
 		while(read_next_byte(&char_input, input, input_ctx, &error_flag))
 		{
-			if(!write_next_byte(char_input, output, output_ctx, options->force_flush))
+			if(!write_next_byte(char_input, output, output_ctx, options->force_sync))
 			{
 				print_message(std_err, WR_ERROR_MESSAGE);
 				goto finished;
@@ -724,7 +757,7 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 	}
 
 	/* flush output buffers*/
-	success = flush_pending_bytes(output, output_ctx);
+	success = flush_pending_bytes(output, output_ctx, options->force_sync);
 
 	if(options->verbose)
 	{
