@@ -4,6 +4,8 @@
 /*.suo
 /*.user
 /bin
+/etc/test-cases/**/*.txt
+/etc/test-cases/out
 /ipch
 /obj
 /out
