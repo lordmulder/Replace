@@ -15,7 +15,7 @@
 
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 2
-#define VERSION_PATCH 0
+#define VERSION_PATCH 1
 
 #ifdef _DEBUG
 #define HAVE_TRACE 1
@@ -437,7 +437,7 @@ static __inline BOOL print_message(const HANDLE output, const CHAR *const text)
 	return WriteFile(output, text, lstrlenA(text), &bytes_written, NULL);
 }
 
-static BOOL print_message_fmt(const HANDLE output, const CHAR *const format, ...)
+static __inline BOOL print_message_fmt(const HANDLE output, const CHAR *const format, ...)
 {
 	CHAR temp[256U];
 	va_list ap;
@@ -450,67 +450,6 @@ static BOOL print_message_fmt(const HANDLE output, const CHAR *const format, ...
 		return print_message(output, temp);
 	}
 	return FALSE;
-}
-
-/* ======================================================================= */
-/* Ring buffer                                                             */
-/* ======================================================================= */
-
-#define RB_INITIAL_POS(BUFF) (((BUFF)->valid >= (BUFF)->capacity) ? (BUFF)->pos : 0U)
-
-typedef struct ringbuffer_t
-{ 
-	LONG capacity;
-	LONG used;
-	LONG index_wr;
-	LONG index_rd;
-	BYTE buffer[];
-}
-ringbuffer_t;
-
-static ringbuffer_t *ringbuffer_alloc(const LONG size)
-{
-	if(size > 0L)
-	{
-		ringbuffer_t *const ringbuffer = (ringbuffer_t*) LocalAlloc(LPTR, sizeof(ringbuffer_t) + (sizeof(BYTE) * size));
-		if(ringbuffer)
-		{
-			ringbuffer->capacity = size;
-			ringbuffer->index_wr = ringbuffer->index_rd = ringbuffer->used = 0U;
-			return ringbuffer;
-		}
-	}
-	return NULL;
-}
-
-static __inline BOOL ringbuffer_put(const BYTE data, ringbuffer_t *const ringbuffer)
-{
-	if(ringbuffer->used < ringbuffer->capacity)
-	{
-		ringbuffer->buffer[ringbuffer->index_wr] = data;
-		++ringbuffer->used;
-		increment(&ringbuffer->index_wr, ringbuffer->capacity);
-		return TRUE;
-	}
-	return FALSE;
-}
-
-static __inline BOOL ringbuffer_get(BYTE *const data_out, ringbuffer_t *const ringbuffer)
-{
-	if(ringbuffer->used > 0U)
-	{
-		*data_out = ringbuffer->buffer[ringbuffer->index_rd];
-		--ringbuffer->used;
-		increment(&ringbuffer->index_rd, ringbuffer->capacity);
-		return TRUE;
-	}
-	return FALSE;
-}
-
-static __inline void ringbuffer_reset(ringbuffer_t *const ringbuffer)
-{
-	ringbuffer->index_wr = ringbuffer->index_rd = 0U;
-	ringbuffer->used = 0U;
 }
 
 /* ======================================================================= */
@@ -625,11 +564,10 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 {
 	BOOL success = FALSE, pending_input = FALSE, error_flag = FALSE;
 	input_context_t *input_ctx = NULL; output_context_t *output_ctx  = NULL;
-	ringbuffer_t *ringbuffer = NULL;
-	ULARGE_INTEGER position = { 0U, 0U };
-	DWORD replacement_count = 0U;
+	BYTE char_input;
 	LONG *prefix = NULL, needle_pos = 0L;
-	BYTE char_input, char_output;
+	DWORD replacement_count = 0U;
+	ULARGE_INTEGER position = { 0U, 0U };
 
 	input_ctx = (input_context_t*) LocalAlloc(LPTR, sizeof(input_context_t));
 	if(!input_ctx)
@@ -643,12 +581,6 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 		goto finished;
 	}
 
-	ringbuffer = ringbuffer_alloc(needle_len);
-	if(!ringbuffer)
-	{
-		goto finished;
-	}
-
 	prefix = compute_prefixes(std_err, needle, needle_len);
 	if(!prefix)
 	{
@@ -658,49 +590,47 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 	/* process all available input data */
 	while(pending_input = read_next_byte(&char_input, input, input_ctx, &error_flag))
 	{
-		/* add next character to buffer*/
-		++position.QuadPart;
-		if (!ringbuffer_put(char_input, ringbuffer))
-		{	
-			print_message(std_err, "Buffer overflow has been encountered! [Internal Error]\n");
-			goto finished;
-		}
-
 		/* dump the initial status */
-		TRACE(std_err, "buffer_old: %ld\n", ringbuffer->used);
-		TRACE(std_err, "needle_old: %ld\n", needle_pos);
+		TRACE(std_err, "position: 0x%08lX%08lX\n", position.HighPart, position.LowPart);
+		TRACE(std_err, "needle_pos[old]: %ld\n", needle_pos);
+
+		/* update input byte counter */
+		++position.QuadPart;
 
 		/* if prefix cannot be extended, search for a shorter prefix */
-		while ((needle_pos >= 0) && (!compare_char(char_input, needle[needle_pos], options->case_insensitive)))
+		while ((needle_pos >= 0L) && (!compare_char(char_input, needle[needle_pos], options->case_insensitive)))
 		{
-			TRACE(std_err, "mismatched: %ld --> %ld\n", needle_pos, prefix[needle_pos]);
-			needle_pos = prefix[needle_pos];
-		}
-
-		/* flush any data *before* start of the current prefix from buffer*/
-		++needle_pos;
-		while (ringbuffer->used > needle_pos)
-		{
-			if(ringbuffer_get(&char_output, ringbuffer))
-			{	
-				if(!write_next_byte(char_output, output, output_ctx, options->force_sync))
+			TRACE(std_err, "mismatch: %ld --> %ld\n", needle_pos, prefix[needle_pos]);
+			/* write discarded part of old prefix */
+			if((needle_pos > 0L) && (prefix[needle_pos] < needle_pos))
+			{
+				if(!write_byte_array(needle, needle_pos - prefix[needle_pos], output, output_ctx, options->force_sync))
 				{
 					print_message(std_err, WR_ERROR_MESSAGE);
 					goto finished;
 				}
 			}
+			needle_pos = prefix[needle_pos];
+		}
+
+		/* write the input character, if it did *not* match */
+		if(needle_pos < 0L)
+		{
+			if(!write_next_byte(char_input, output, output_ctx, options->force_sync))
+			{
+				print_message(std_err, WR_ERROR_MESSAGE);
+				goto finished;
+			}
 		}
 
 		/* dump the updated status */
-		TRACE(std_err, "buffer_new: %ld\n", ringbuffer->used);
-		TRACE(std_err, "needle_new: %ld\n", needle_pos);
+		TRACE(std_err, "needle_pos[new]: %ld\n", needle_pos);
 
 		/* if a full match has been found, write the replacement instead */
-		if (needle_pos >= needle_len)
+		if (++needle_pos >= needle_len)
 		{
 			++replacement_count;
 			needle_pos = 0U;
-			ringbuffer_reset(ringbuffer);
 			if(options->verbose)
 			{
 				const ULARGE_INTEGER match_start = make_uint64(position.QuadPart - needle_len);
@@ -723,13 +653,12 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 	}
 
 	/* dump the final status */
-	TRACE(std_err, "buffer_fin: %ld\n", ringbuffer->used);
-	TRACE(std_err, "needle_fin: %ld\n", needle_pos);
+	TRACE(std_err, "needle_pos[fin]: %ld\n", needle_pos);
 
 	/* write any pending data */
-	while(ringbuffer_get(&char_output, ringbuffer))
+	if(needle_pos > 0L)
 	{	
-		if(!write_next_byte(char_output, output, output_ctx, options->force_sync))
+		if(!write_byte_array(needle, needle_pos, output, output_ctx, options->force_sync))
 		{
 			print_message(std_err, WR_ERROR_MESSAGE);
 			goto finished;
@@ -774,11 +703,6 @@ finished:
 	if(output_ctx)
 	{
 		LocalFree(output_ctx);
-	}
-
-	if(ringbuffer)
-	{
-		LocalFree(ringbuffer);
 	}
 
 	if(prefix)
