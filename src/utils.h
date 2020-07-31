@@ -37,6 +37,10 @@ typedef struct options_t
 }
 options_t;
 
+/* Abort flag */
+static volatile BOOL g_abort_requested = FALSE;
+static volatile BOOL g_process_aborted = FALSE;
+
 /* ======================================================================= */
 /* Utilities                                                               */
 /* ======================================================================= */

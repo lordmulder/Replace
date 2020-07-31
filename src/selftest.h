@@ -27,6 +27,10 @@
 		print_message(std_err, "[Self-Test] Test case #" #X " failed !!!\n"); \
 		success = FALSE; \
 	} \
+	if(g_abort_requested || g_process_aborted) \
+	{ \
+		return FALSE; \
+	} \
 } \
 while(0)
 

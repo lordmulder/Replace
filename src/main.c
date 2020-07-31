@@ -16,6 +16,8 @@
 #define VERSION_MINOR 3
 #define VERSION_PATCH 0
 
+const CHAR *const ABORTED_MESSAGE = "Process was aborted.\n";
+
 /* ======================================================================= */
 /* Manpage                                                                 */
 /* ======================================================================= */
@@ -50,6 +52,25 @@ static void print_manpage(const HANDLE std_err)
 	print_message(std_err, "  replace.exe \"foobar\" \"quux\" \"modified.txt\"\n");
 	print_message(std_err, "  replace.exe -b 0xDEADBEEF 0xCAFEBABE \"input.bin\" \"output.bin\"\n");
 	print_message(std_err, "  type \"from.txt\" | replace.exe \"foo\" \"bar\" > \"to.txt\"\n\n");
+}
+
+/* ======================================================================= */
+/* Ctrl+C handler routine                                                  */
+/* ======================================================================= */
+
+BOOL WINAPI ctrl_handler_routine(const DWORD type)
+{
+	switch(type)
+	{
+	case CTRL_C_EVENT:
+	case CTRL_BREAK_EVENT:
+	case CTRL_CLOSE_EVENT:
+	case CTRL_LOGOFF_EVENT:
+	case CTRL_SHUTDOWN_EVENT:
+		g_abort_requested = TRUE;
+		return TRUE;
+	}
+	return FALSE;
 }
 
 /* ======================================================================= */
@@ -196,16 +217,14 @@ static int _main(const int argc, const LPWSTR *const argv)
 
 	if(options.self_test)
 	{
-		print_message(std_err, "Begin self-test...\n");
-		if(self_test(std_err))
+		print_message(std_err, "Running self-test...\n");
+		if(!self_test(std_err))
 		{
-			print_message(std_err, "Self-test completed.\n");
-			result = 0;
+			print_message(std_err, g_process_aborted ? ABORTED_MESSAGE : "Error: Self-test failed!\n");
+			goto cleanup;
 		}
-		else
-		{
-			print_message(std_err, "Error: Self-test failed!\n");
-		}
+		print_message(std_err, "Self-test completed.\n");
+		result = 0;
 		goto cleanup;
 	}
 
@@ -312,7 +331,13 @@ static int _main(const int argc, const LPWSTR *const argv)
 
 	if(!search_and_replace(input, output, std_err, needle, needle_len, replacement, replacement_len, &options))
 	{
-		print_message(std_err, "Error: An I/O error was encountered. Output probably is incomplete!\n");
+		print_message(std_err, g_process_aborted ? ABORTED_MESSAGE : "Error: Something went wrong. Output probably is incomplete!\n");
+		goto cleanup;
+	}
+
+	if(g_abort_requested || g_process_aborted)
+	{
+		print_message(std_err, ABORTED_MESSAGE);
 		goto cleanup;
 	}
 
@@ -403,6 +428,8 @@ void startup(void)
 	LPWSTR *argv;
 
 	SetErrorMode(SetErrorMode(0x3) | 0x3);
+	SetConsoleCtrlHandler(ctrl_handler_routine, TRUE);
+
 	if(argv = CommandLineToArgvW(GetCommandLineW(), &argc))
 	{
 		result = _main(argc, argv);

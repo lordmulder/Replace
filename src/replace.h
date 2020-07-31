@@ -12,6 +12,17 @@
 
 #include "utils.h"
 
+#define CHECK_ABORT_REQUEST() do \
+{ \
+	if(g_abort_requested) \
+	{ \
+		print_message(std_err, "Process cancelled by user --> aborting!\n"); \
+		g_process_aborted = TRUE; \
+		goto finished; \
+	} \
+} \
+while(0)
+
 /* ======================================================================= */
 /* Search & Replace                                                        */
 /* ======================================================================= */
@@ -140,6 +151,9 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 				break;
 			}
 		}
+
+		/*check if abort was request*/
+		CHECK_ABORT_REQUEST();
 	}
 
 	/* dump the final status */
@@ -155,6 +169,9 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 		}
 	}
 
+	/*check if abort was request*/
+	CHECK_ABORT_REQUEST();
+
 	/* transfer any input data not processed yet */
 	if(pending_input)
 	{
@@ -167,6 +184,9 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 			}
 		}
 	}
+
+	/*check if abort was request*/
+	CHECK_ABORT_REQUEST();
 
 	/* check for any previous read errors */
 	if(error_flag)
