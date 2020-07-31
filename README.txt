@@ -13,7 +13,8 @@ Options:
   -b  Binary mode; parameters '<needle>' and '<replacement>' are Hex strings
   -v  Enable verbose mode; prints additional diagnostic information
   -f  Force immediate flushing of output buffers (may degrade performance)
-  -h  Display this help and exit
+  -t  Run self-test and exit
+  -h  Display this help text and exit
 
 Notes:
   1. If *only* an '<input_file>' is specified, the file is modified in-place!
