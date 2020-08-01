@@ -30,6 +30,7 @@ typedef struct options_t
 	BOOL case_insensitive;
 	BOOL replace_once;
 	BOOL ansi_cp;
+	BOOL escpae_chars;
 	BOOL force_sync;
 	BOOL verbose;
 	BOOL binary_mode;
@@ -165,6 +166,64 @@ static BYTE *decode_hex_string(const WCHAR *input, LONG *const length_out)
 
 	*length_out = len;
 	return result;
+}
+
+static BOOL expand_escape_chars(BYTE *const string, LONG *const len)
+{
+	LONG pos_in, pos_out;
+	BOOL flag = FALSE;
+	for(pos_in = pos_out = 0U; pos_in < *len; ++pos_in)
+	{
+		if(flag)
+		{
+			flag = FALSE;
+			switch(string[pos_in])
+			{
+			case '0':
+				string[pos_out++] = '\0';
+				continue;
+			case 'a':
+				string[pos_out++] = '\a';
+				continue;
+			case 'b':
+				string[pos_out++] = '\b';
+				continue;
+			case 't':
+				string[pos_out++] = '\t';
+				continue;
+			case 'n':
+				string[pos_out++] = '\n';
+				continue;
+			case 'v':
+				string[pos_out++] = '\v';
+				continue;
+			case 'f':
+				string[pos_out++] = '\f';
+				continue;
+			case 'r':
+				string[pos_out++] = '\r';
+				continue;
+			case '\\':
+				string[pos_out++] = '\\';
+				continue;
+			default:
+				return FALSE;
+			}
+		}
+		if(!(flag = (string[pos_in] == '\\')))
+		{
+			if(pos_in != pos_out)
+			{
+				string[pos_out] = string[pos_in];
+			}
+			++pos_out;
+		}
+	}
+	if(*len > pos_out)
+	{
+		string[*len = pos_out] = '\0';
+	}
+	return TRUE;
 }
 
 /* ======================================================================= */

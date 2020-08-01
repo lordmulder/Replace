@@ -13,7 +13,7 @@
 #include "selftest.h"
 
 #define VERSION_MAJOR 1
-#define VERSION_MINOR 3
+#define VERSION_MINOR 4
 #define VERSION_PATCH 0
 
 const CHAR *const ABORTED_MESSAGE = "Process was aborted.\n";
@@ -37,9 +37,10 @@ static void print_manpage(const HANDLE std_err)
 	print_message(std_err, "  -i  Perform case-insensitive matching for the characters 'A' to 'Z'\n");
 	print_message(std_err, "  -s  Single replacement; replace only the *first* occurrence instead of all\n");
 	print_message(std_err, "  -a  Process input using ANSI codepage (CP-1252) instead of UTF-8\n");
+	print_message(std_err, "  -e  Enable interpretation of backslash escape sequences in all parameters\n");
+	print_message(std_err, "  -f  Force immediate flushing of file buffers (may degrade performance)\n");
 	print_message(std_err, "  -b  Binary mode; parameters '<needle>' and '<replacement>' are Hex strings\n");
 	print_message(std_err, "  -v  Enable verbose mode; prints additional diagnostic information\n");
-	print_message(std_err, "  -f  Force immediate flushing of output buffers (may degrade performance)\n");
 	print_message(std_err, "  -t  Run self-test and exit\n");
 	print_message(std_err, "  -h  Display this help text and exit\n\n");
 	print_message(std_err, "Notes:\n");
@@ -49,6 +50,7 @@ static void print_manpage(const HANDLE std_err)
 	print_message(std_err, "  4. The length of a Hex string must be *even*; with optional '0x' prefix.\n\n");
 	print_message(std_err, "Examples:\n");
 	print_message(std_err, "  replace.exe \"foobar\" \"quux\" \"input.txt\" \"output.txt\"\n");
+	print_message(std_err, "  replace.exe -e \"foo\\nbar\" \"qu\\tux\" \"input.txt\" \"output.txt\"\n");
 	print_message(std_err, "  replace.exe \"foobar\" \"quux\" \"modified.txt\"\n");
 	print_message(std_err, "  replace.exe -b 0xDEADBEEF 0xCAFEBABE \"input.bin\" \"output.bin\"\n");
 	print_message(std_err, "  type \"from.txt\" | replace.exe \"foo\" \"bar\" > \"to.txt\"\n\n");
@@ -120,6 +122,10 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 				case L't':
 					options->self_test = TRUE;
 					break;
+				case L'e':
+					options->escpae_chars = TRUE;
+					break;
+					
 				default:
 					print_message(std_err, "Error: Invalid command-line option encountered!\n");
 					return FALSE;
@@ -141,7 +147,7 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 static int _main(const int argc, const LPWSTR *const argv)
 {
 	int result = 1, param_offset = 1;
-	const BYTE *needle = NULL, *replacement = NULL;
+	BYTE *needle = NULL, *replacement = NULL;
 	options_t options;
 	HANDLE std_in = GetStdHandle(STD_INPUT_HANDLE), std_out = GetStdHandle(STD_OUTPUT_HANDLE), std_err = GetStdHandle(STD_ERROR_HANDLE);
 	HANDLE input = INVALID_HANDLE_VALUE, output = INVALID_HANDLE_VALUE;
@@ -172,9 +178,9 @@ static int _main(const int argc, const LPWSTR *const argv)
 	/* Parameter validation                                     */
 	/* -------------------------------------------------------- */
 
-	if(options.binary_mode && (options.ansi_cp || options.case_insensitive))
+	if(options.binary_mode && (options.ansi_cp || options.escpae_chars || options.case_insensitive))
 	{
-		print_message(std_err, "Error: Options '-i' and '-a' are incompatible with '-b' option!\n");
+		print_message(std_err, "Error: Options '-a', '-e' and '-i' are incompatible with '-b' option!\n");
 		goto cleanup;
 	}
 
@@ -247,6 +253,15 @@ static int _main(const int argc, const LPWSTR *const argv)
 	{
 		print_message(std_err, "Error: Failed to decode 'replacement' string!\n");
 		goto cleanup;
+	}
+
+	if(options.escpae_chars)
+	{
+		if(!(expand_escape_chars(needle, &needle_len) && expand_escape_chars(replacement, &replacement_len)))
+		{
+			print_message(std_err, "Error: Parameter contains invalid escape sequence!\n");
+			goto cleanup;
+		}
 	}
 
 	source_file = (argc - param_offset > 2U) ? argv[param_offset + 2U] : NULL;

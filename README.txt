@@ -10,9 +10,10 @@ Options:
   -i  Perform case-insensitive matching for the characters 'A' to 'Z'
   -s  Single replacement; replace only the *first* occurrence instead of all
   -a  Process input using ANSI codepage (CP-1252) instead of UTF-8
+  -e  Enable interpretation of backslash escape sequences in all parameters
+  -f  Force immediate flushing of file buffers (may degrade performance)
   -b  Binary mode; parameters '<needle>' and '<replacement>' are Hex strings
   -v  Enable verbose mode; prints additional diagnostic information
-  -f  Force immediate flushing of output buffers (may degrade performance)
   -t  Run self-test and exit
   -h  Display this help text and exit
 
@@ -24,6 +25,7 @@ Notes:
 
 Examples:
   replace.exe "foobar" "quux" "input.txt" "output.txt"
+  replace.exe -e "foo\nbar" "qu\tux" "input.txt" "output.txt"
   replace.exe "foobar" "quux" "modified.txt"
   replace.exe -b 0xDEADBEEF 0xCAFEBABE "input.bin" "output.bin"
   type "from.txt" | replace.exe "foo" "bar" > "to.txt"
