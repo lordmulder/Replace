@@ -145,6 +145,8 @@ static int _main(const int argc, const LPWSTR *const argv)
 	options_t options;
 	HANDLE std_in = GetStdHandle(STD_INPUT_HANDLE), std_out = GetStdHandle(STD_OUTPUT_HANDLE), std_err = GetStdHandle(STD_ERROR_HANDLE);
 	HANDLE input = INVALID_HANDLE_VALUE, output = INVALID_HANDLE_VALUE;
+	file_input_t *file_input_context = NULL;
+	file_output_t *file_output_context = NULL;
 	UINT previous_output_cp = 0U;
 	LONG needle_len = 0L, replacement_len = 0L;
 	const WCHAR *source_file = NULL, *output_file = NULL, *temp_path = NULL, *temp_file = NULL;
@@ -281,6 +283,12 @@ static int _main(const int argc, const LPWSTR *const argv)
 		goto cleanup;
 	}
 
+	if(!(file_input_context = alloc_file_input(input)))
+	{
+		print_message(std_err, "Error: Failed to allocate file input context!\n");
+		goto cleanup;
+	}
+
 	if(EMPTY(output_file) && NOT_EMPTY(source_file) && (lstrcmpiW(source_file, L"-") != 0))
 	{
 		if(options.verbose)
@@ -319,6 +327,12 @@ static int _main(const int argc, const LPWSTR *const argv)
 		goto cleanup;
 	}
 
+	if(!(file_output_context = alloc_file_output(output)))
+	{
+		print_message(std_err, "Error: Failed to allocate file output context!\n");
+		goto cleanup;
+	}
+
 	/* -------------------------------------------------------- */
 	/* Search & replace!                                        */
 	/* -------------------------------------------------------- */
@@ -329,7 +343,7 @@ static int _main(const int argc, const LPWSTR *const argv)
 		SetConsoleOutputCP(options.ansi_cp ? CP_1252 : CP_UTF8);
 	}
 
-	if(!search_and_replace(input, output, std_err, needle, needle_len, replacement, replacement_len, &options))
+	if(!search_and_replace(file_read_byte, (DWORD_PTR)file_input_context, file_write_byte, (DWORD_PTR)file_output_context, std_err, needle, needle_len, replacement, replacement_len, &options))
 	{
 		print_message(std_err, g_process_aborted ? ABORTED_MESSAGE : "Error: Something went wrong. Output probably is incomplete!\n");
 		goto cleanup;
@@ -407,6 +421,16 @@ cleanup:
 	if(temp_path)
 	{
 		LocalFree((HLOCAL)temp_path);
+	}
+
+	if(file_input_context)
+	{
+		LocalFree((HLOCAL)file_input_context);
+	}
+
+	if(file_output_context)
+	{
+		LocalFree((HLOCAL)file_output_context);
 	}
 
 	if(previous_output_cp)

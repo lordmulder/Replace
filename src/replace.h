@@ -23,12 +23,28 @@
 } \
 while(0)
 
+typedef BOOL (*rd_func_t)(BYTE *const data, const DWORD_PTR, BOOL *const error_flag);
+typedef BOOL (*wr_func_t)(const WORD data, const DWORD_PTR, const BOOL sync);
+
 /* ======================================================================= */
 /* Search & Replace                                                        */
 /* ======================================================================= */
 
 static const char *const WR_ERROR_MESSAGE = "Write operation failed -> aborting!\n";
 static const char *const RD_ERROR_MESSAGE = "Read operation failed -> aborting!\n";
+
+static __inline BOOL write_array(const BYTE *const data, const DWORD data_len, const wr_func_t wr_func, const DWORD_PTR output, const BOOL sync)
+{
+	DWORD pos;
+	for(pos = 0U; pos < data_len; ++pos)
+	{
+		if(!wr_func(data[pos], output, sync))
+		{
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
 
 static LONG *compute_prefixes(const HANDLE std_err, const BYTE *const needle, const LONG needle_len)
 {
@@ -61,27 +77,15 @@ static LONG *compute_prefixes(const HANDLE std_err, const BYTE *const needle, co
 	return prefix;
 }
 
-static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HANDLE std_err, const BYTE *const needle, const LONG needle_len, const BYTE *const replacement, const LONG replacement_len, const options_t *const options)
+static BOOL search_and_replace(const rd_func_t rd_func, const DWORD_PTR input, const wr_func_t wr_func, const DWORD_PTR output, const HANDLE std_err, const BYTE *const needle, const LONG needle_len, const BYTE *const replacement, const LONG replacement_len, const options_t *const options)
 {
 	BOOL success = FALSE, pending_input = FALSE, error_flag = FALSE;
-	input_context_t *input_ctx = NULL; output_context_t *output_ctx  = NULL;
 	BYTE char_input;
 	LONG *prefix = NULL, needle_pos = 0L;
 	DWORD replacement_count = 0U;
 	ULARGE_INTEGER position = { 0U, 0U };
 
-	input_ctx = (input_context_t*) LocalAlloc(LPTR, sizeof(input_context_t));
-	if(!input_ctx)
-	{
-		goto finished;
-	}
-
-	output_ctx = (output_context_t*) LocalAlloc(LPTR, sizeof(output_context_t));
-	if(!output_ctx)
-	{
-		goto finished;
-	}
-
+	/* pre-compute prefixes */
 	prefix = compute_prefixes(std_err, needle, needle_len);
 	if(!prefix)
 	{
@@ -89,7 +93,7 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 	}
 
 	/* process all available input data */
-	while(pending_input = read_next_byte(&char_input, input, input_ctx, &error_flag))
+	while(pending_input = rd_func(&char_input, input, &error_flag))
 	{
 		/* dump the initial status */
 		TRACE(std_err, "position: 0x%08lX%08lX\n", position.HighPart, position.LowPart);
@@ -105,7 +109,7 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 			/* write discarded part of old prefix */
 			if((needle_pos > 0L) && (prefix[needle_pos] < needle_pos))
 			{
-				if(!write_byte_array(needle, needle_pos - prefix[needle_pos], output, output_ctx, options->force_sync))
+				if(!write_array(needle, needle_pos - prefix[needle_pos], wr_func, output, options->force_sync))
 				{
 					print_message(std_err, WR_ERROR_MESSAGE);
 					goto finished;
@@ -117,7 +121,7 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 		/* write the input character, if it did *not* match */
 		if(needle_pos < 0L)
 		{
-			if(!write_next_byte(char_input, output, output_ctx, options->force_sync))
+			if(!wr_func(char_input, output, options->force_sync))
 			{
 				print_message(std_err, WR_ERROR_MESSAGE);
 				goto finished;
@@ -137,7 +141,7 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 				const ULARGE_INTEGER match_start = make_uint64(position.QuadPart - needle_len);
 				print_message_fmt(std_err, "Replaced occurence at offset: 0x%08lX%08lX\n", match_start.HighPart, match_start.LowPart);
 			}
-			if(!write_byte_array(replacement, replacement_len, output, output_ctx, options->force_sync))
+			if(!write_array(replacement, replacement_len, wr_func, output, options->force_sync))
 			{
 				print_message(std_err, WR_ERROR_MESSAGE);
 				goto finished;
@@ -162,7 +166,7 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 	/* write any pending data */
 	if(needle_pos > 0L)
 	{	
-		if(!write_byte_array(needle, needle_pos, output, output_ctx, options->force_sync))
+		if(!write_array(needle, needle_pos, wr_func, output, options->force_sync))
 		{
 			print_message(std_err, WR_ERROR_MESSAGE);
 			goto finished;
@@ -175,9 +179,9 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 	/* transfer any input data not processed yet */
 	if(pending_input)
 	{
-		while(read_next_byte(&char_input, input, input_ctx, &error_flag))
+		while(rd_func(&char_input, input, &error_flag))
 		{
-			if(!write_next_byte(char_input, output, output_ctx, options->force_sync))
+			if(!wr_func(char_input, output, options->force_sync))
 			{
 				print_message(std_err, WR_ERROR_MESSAGE);
 				goto finished;
@@ -196,7 +200,7 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 	}
 
 	/* flush output buffers*/
-	success = flush_pending_bytes(output, output_ctx, options->force_sync);
+	success = wr_func(IO_FLUSH, output, options->force_sync);
 
 	if(options->verbose)
 	{
@@ -204,16 +208,6 @@ static BOOL search_and_replace(const HANDLE input, const HANDLE output, const HA
 	}
 
 finished:
-
-	if(input_ctx)
-	{
-		LocalFree(input_ctx);
-	}
-
-	if(output_ctx)
-	{
-		LocalFree(output_ctx);
-	}
 
 	if(prefix)
 	{

@@ -41,6 +41,9 @@ options_t;
 static volatile BOOL g_abort_requested = FALSE;
 static volatile BOOL g_process_aborted = FALSE;
 
+/* Flush flag */
+#define IO_FLUSH ((WORD)-1)
+
 /* ======================================================================= */
 /* Utilities                                                               */
 /* ======================================================================= */
@@ -171,19 +174,20 @@ static __inline DWORD random_seed(void)
 	LARGE_INTEGER count;
 	if(QueryPerformanceCounter(&count))
 	{
-		return 31U * GetCurrentProcessId() + count.LowPart;
+		
+		return (31U * ((31U * GetCurrentProcessId()) + count.HighPart)) + count.LowPart;
 	}
 	else
 	{
-		return 31U * GetCurrentProcessId() + GetTickCount();
+		return (31U * GetCurrentProcessId()) + GetTickCount();
 	}
 }
 
 static __inline DWORD random_next(DWORD *const seed)
 {
-	*seed *= 1664525U;
-	*seed += 1013904223U;
-	return *seed;
+	const DWORD rand = *seed;
+	*seed = (*seed) * 134775813U + 1U;
+	return rand;
 }
 
 /* ======================================================================= */
@@ -258,14 +262,13 @@ static const WCHAR *generate_temp_file(const WCHAR *const directory)
 	WCHAR *const temp = (WCHAR*) LocalAlloc(LPTR, sizeof(WCHAR) * (lstrlenW(prefix) + 14U));
 	if(temp)
 	{
-		DWORD round;
-		for(round = 0U; round < 997U; ++round)
+		DWORD round, iter, seed;
+		for(round = 0U; round < 4099U; ++round)
 		{
-			DWORD rseed = random_seed();
-			DWORD retry;
-			for(retry = 0U; retry <= 9973U; ++retry)
+			seed = random_seed();
+			for(iter = 0U; iter < 4099U; ++iter)
 			{
-				wsprintfW(temp, RAND_TEMPLATE, prefix, random_next(&rseed) & RAND_MASK);
+				wsprintfW(temp, RAND_TEMPLATE, prefix, random_next(&seed) & RAND_MASK);
 				if(!path_exists(temp))
 				{
 					return temp;
@@ -320,32 +323,113 @@ static const BOOL delete_file(const WCHAR *const file_path)
 }
 
 /* ======================================================================= */
-/* I/O Routines                                                            */
+/* Memory I/O Routines                                                     */
 /* ======================================================================= */
 
-#define BUFF_SIZE 4096U
+#pragma warning(push)
+#pragma warning(disable: 4100)
 
-typedef struct input_context_t
+typedef struct memory_input_t
 { 
+	const BYTE *data_in;
+	DWORD len;
+	DWORD pos;
+}
+memory_input_t;
+
+typedef struct memory_output_t
+{ 
+	BYTE *data_out;
+	DWORD len;
+	DWORD pos;
+	DWORD flushed;
+}
+memory_output_t;
+
+static __inline BOOL memory_read_byte(BYTE *const output, const DWORD_PTR input, BOOL *const error_flag)
+{
+	memory_input_t *const ctx = (memory_input_t*) input;
+	if(ctx->pos < ctx->len)
+	{
+		*output = ctx->data_in[ctx->pos++];
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static __inline BOOL memory_write_byte(const WORD input, const DWORD_PTR output, const BOOL sync)
+{
+	memory_output_t *const ctx = (memory_output_t*) output;
+	if(input != IO_FLUSH)
+	{
+		if(ctx->pos < ctx->len)
+		{
+			ctx->data_out[ctx->pos++] = input & 0xFF;
+			return TRUE;
+		}
+		return FALSE;
+	}
+	else
+	{
+		ctx->flushed = ctx->pos;
+		return TRUE;
+	}
+}
+
+#pragma warning(pop)
+
+/* ======================================================================= */
+/* File I/O Routines                                                       */
+/* ======================================================================= */
+
+#define IO_BUFF_SIZE 4096U
+
+typedef struct file_input_t
+{ 
+	HANDLE handle_in;
 	DWORD avail;
 	DWORD pos;
-	BYTE buffer[BUFF_SIZE];
+	BYTE buffer[IO_BUFF_SIZE];
 }
-input_context_t;
+file_input_t;
 
-typedef struct output_context_t
+typedef struct file_output_t
 { 
+	HANDLE handle_out;
 	DWORD pos;
-	BYTE buffer[BUFF_SIZE];
+	BYTE buffer[IO_BUFF_SIZE];
 }
-output_context_t;
+file_output_t;
 
-static __inline BOOL read_next_byte(BYTE *const output, const HANDLE input, input_context_t *const ctx, BOOL *const error_flag)
+static file_input_t *alloc_file_input(const HANDLE handle)
 {
+	file_input_t *const ctx = (file_input_t*) LocalAlloc(LPTR, sizeof(file_input_t));
+	if(ctx)
+	{
+		ctx->handle_in = handle;
+		ctx->avail = ctx->pos = 0U;
+	}
+	return ctx;
+}
+
+static file_output_t *alloc_file_output(const HANDLE handle)
+{
+	file_output_t *const ctx = (file_output_t*) LocalAlloc(LPTR, sizeof(file_output_t));
+	if(ctx)
+	{
+		ctx->handle_out = handle;
+		ctx->pos = 0U;
+	}
+	return ctx;
+}
+
+static __inline BOOL file_read_byte(BYTE *const output, const DWORD_PTR input, BOOL *const error_flag)
+{
+	file_input_t *const ctx = (file_input_t*) input;
 	if(ctx->pos >= ctx->avail)
 	{
 		ctx->pos = 0U;
-		if(!ReadFile(input, ctx->buffer, BUFF_SIZE, &ctx->avail, NULL))
+		if(!ReadFile(ctx->handle_in, ctx->buffer, IO_BUFF_SIZE, &ctx->avail, NULL))
 		{
 			const DWORD error_code = GetLastError();
 			if((error_code != ERROR_HANDLE_EOF) && (error_code != ERROR_BROKEN_PIPE))
@@ -363,66 +447,56 @@ static __inline BOOL read_next_byte(BYTE *const output, const HANDLE input, inpu
 	return TRUE;
 }
 
-static __inline BOOL write_next_byte(const BYTE input, const HANDLE output, output_context_t *const ctx, const BOOL sync)
+static __inline BOOL file_write_byte(const WORD input, const DWORD_PTR output, const BOOL sync)
 {
-	ctx->buffer[ctx->pos++] = input;
-	if(ctx->pos >= BUFF_SIZE)
+	file_output_t *const ctx = (file_output_t*) output;
+	if(input != IO_FLUSH)
 	{
-		DWORD bytes_written;
-		ctx->pos = 0U;
-		if(!WriteFile(output, ctx->buffer, BUFF_SIZE, &bytes_written, NULL))
+		ctx->buffer[ctx->pos++] = input & 0xFF;
+		if(ctx->pos >= IO_BUFF_SIZE)
 		{
-			return FALSE;
+			DWORD bytes_written;
+			if(!WriteFile(ctx->handle_out, ctx->buffer, IO_BUFF_SIZE, &bytes_written, NULL))
+			{
+				return FALSE;
+			}
+			if(bytes_written < IO_BUFF_SIZE)
+			{
+				return FALSE;
+			}
+			if(sync)
+			{
+				FlushFileBuffers(ctx->handle_out);
+			}
+			ctx->pos = 0U;
 		}
-		if(bytes_written < BUFF_SIZE)
+	}
+	else
+	{
+		if(ctx->pos > 0)
 		{
-			return FALSE;
-		}
-		if(sync)
-		{
-			FlushFileBuffers(output);
+			DWORD bytes_written;
+			if(!WriteFile(ctx->handle_out, ctx->buffer, ctx->pos, &bytes_written, NULL))
+			{
+				return FALSE;
+			}
+			if(bytes_written < ctx->pos)
+			{
+				return FALSE;
+			}
+			if(sync)
+			{
+				FlushFileBuffers(ctx->handle_out);
+			}
+			ctx->pos = 0U;
 		}
 	}
 	return TRUE;
 }
 
-static __inline BOOL write_byte_array(const BYTE *const input, const DWORD input_len, const HANDLE output, output_context_t *const ctx, const BOOL sync)
-{
-	DWORD input_pos;
-	for(input_pos = 0U; input_pos < input_len; ++input_pos)
-	{
-		if(!write_next_byte(input[input_pos], output, ctx, FALSE))
-		{
-			return FALSE;
-		}
-		if(sync)
-		{
-			FlushFileBuffers(output);
-		}
-	}
-	return TRUE;
-}
-
-static __inline BOOL flush_pending_bytes(const HANDLE output, output_context_t *const ctx, const BOOL sync)
-{
-	if(ctx->pos > 0)
-	{
-		DWORD bytes_written;
-		if(!WriteFile(output, ctx->buffer, ctx->pos, &bytes_written, NULL))
-		{
-			return FALSE;
-		}
-		if(bytes_written < ctx->pos)
-		{
-			return FALSE;
-		}
-		if(sync)
-		{
-			FlushFileBuffers(output);
-		}
-	}
-	return TRUE;
-}
+/* ======================================================================= */
+/* Logging                                                                 */
+/* ======================================================================= */
 
 static __inline BOOL print_message(const HANDLE output, const CHAR *const text)
 {

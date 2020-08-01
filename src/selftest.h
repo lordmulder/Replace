@@ -34,128 +34,41 @@
 } \
 while(0)
 
-static BOOL write_test_file(const WCHAR *const file_name, const BYTE *const data, const DWORD data_len)
-{
-	BOOL success = FALSE;
-	const HANDLE handle = CreateFileW(file_name, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
-	if(handle != NULL)
-	{
-		DWORD bytes_written = 0U;
-		if(WriteFile(handle, data, data_len, &bytes_written, NULL))
-		{
-			success = (bytes_written >= data_len);
-		}
-		CloseHandle(handle);
-	}
-	return success;
-}
-
-static BYTE *read_test_file(const WCHAR *const file_name, DWORD *const length)
-{
-	BYTE *result = NULL;
-	const HANDLE handle = CreateFileW(file_name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-	if(handle != NULL)
-	{
-		LARGE_INTEGER size;
-		if(GetFileSizeEx(handle, &size))
-		{
-			if(!size.HighPart)
-			{
-				if(result = (BYTE*) LocalAlloc(LPTR, sizeof(BYTE) * size.LowPart))
-				{
-					BOOL okay = FALSE;
-					if(ReadFile(handle, result, size.LowPart, length, NULL))
-					{
-						okay = (*length >= size.LowPart);
-					}
-					if(!okay)
-					{
-						LocalFree(result);
-						result = NULL;
-					}
-				}
-			}
-		}
-		CloseHandle(handle);
-	}
-	return result;
-}
-
 static BOOL run_test(const HANDLE std_err, const CHAR *const needle, const CHAR *const replacement, const CHAR *const haystack, const CHAR *const expected)
 {
 	BOOL success = FALSE;
 	options_t options;
-	const WCHAR *source_file = NULL, *output_file = NULL;
-	HANDLE input = INVALID_HANDLE_VALUE, output = INVALID_HANDLE_VALUE;
-	DWORD result_len = 0U;
+	memory_input_t input_context;
+	memory_output_t output_context;
 	const CHAR *result = NULL;
 
-	if(!(source_file = generate_temp_file(NULL)))
-	{
-		goto cleanup;
-	}
-
-	if(!write_test_file(source_file, (const BYTE*)haystack, lstrlenA(haystack)))
-	{
-		goto cleanup;
-	}
-
-	input = CreateFileW(source_file, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-	if(input == INVALID_HANDLE_VALUE)
-	{
-		goto cleanup;
-	}
-
-	if(!(output_file = generate_temp_file(NULL)))
-	{
-		goto cleanup;
-	}
-
-	output = CreateFileW(output_file, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
-	if(output == INVALID_HANDLE_VALUE)
+	const DWORD expected_len = lstrlenA(expected);
+	if(!(result = (CHAR*) LocalAlloc(LPTR, sizeof(CHAR) * ((2U * expected_len) + 1U))))
 	{
 		goto cleanup;
 	}
 
 	SecureZeroMemory(&options, sizeof(options_t));
-	if(!search_and_replace(input, output, std_err, (const BYTE*)needle, lstrlenA(needle), (const BYTE*)replacement, lstrlenA(replacement), &options))
+	SecureZeroMemory(&input_context, sizeof(memory_input_t));
+	SecureZeroMemory(&output_context, sizeof(memory_output_t));
+
+	input_context.data_in = (const BYTE*) haystack;
+	input_context.len = lstrlenA(haystack);
+
+	output_context.data_out = (BYTE*) result;
+	output_context.len = 2U * expected_len;
+
+	if(!search_and_replace(memory_read_byte, (DWORD_PTR)&input_context, memory_write_byte, (DWORD_PTR)&output_context, std_err, (const BYTE*)needle, lstrlenA(needle), (const BYTE*)replacement, lstrlenA(replacement), &options))
 	{
 		goto cleanup;
 	}
-
-	CloseHandle(input);
-	CloseHandle(output);
-
-	input = output = INVALID_HANDLE_VALUE;
 	
-	if(result = (const CHAR*)read_test_file(output_file, &result_len))
+	if(output_context.flushed == expected_len)
 	{
-		success = (CompareStringA(LOCALE_INVARIANT, 0, result, result_len, expected, lstrlenA(expected)) == CSTR_EQUAL);
+		success = (CompareStringA(LOCALE_INVARIANT, 0, result, output_context.flushed, expected, lstrlenA(expected)) == CSTR_EQUAL);
 	}
 
 cleanup:
-
-	if(input != INVALID_HANDLE_VALUE)
-	{
-		CloseHandle(input);
-	}
-
-	if(output != INVALID_HANDLE_VALUE)
-	{
-		CloseHandle(output);
-	}
-
-	if(source_file)
-	{
-		delete_file(source_file);
-		LocalFree((HLOCAL)source_file);
-	}
-
-	if(output_file)
-	{
-		delete_file(output_file);
-		LocalFree((HLOCAL)output_file);
-	}
 
 	if(result)
 	{
@@ -169,41 +82,45 @@ static BOOL self_test(const HANDLE std_err)
 {
 	BOOL success = TRUE;
 
-	RUN_TEST(1, "LTs3kx", "XJbf3A",
+	RUN_TEST(0, "LTs3kx", "XJbf3A",
 		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHptv7toJhdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay",
 		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHptv7toJhdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay");
 
-	RUN_TEST(2, "LTs3kx", "XJbf3A",
+	RUN_TEST(1, "LTs3kx", "XJbf3B",
 		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHpLTs3kxhdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay",
-		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHpXJbf3AhdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay");
+		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHpXJbf3BhdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay");
 
-	RUN_TEST(3, "LTs3kx", "",
+	RUN_TEST(2, "LTs3kx", "",
 		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHpLTs3kxhdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay",
 		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHphdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay");
 
-	RUN_TEST(4, "LTs3kx", "H4n3zWoHKfbX",
+	RUN_TEST(3, "LTs3kx", "H4n3zWoHKfbX",
 		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHpLTs3kxhdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay",
 		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHpH4n3zWoHKfbXhdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay");
 
-	RUN_TEST(5, "ababaa", "XJbf3A",
+	RUN_TEST(4, "ababaa", "YJbg3A",
 		"aaabaaaabbbaaabbaaaabaaaaabbabbaaaa3aabbbabbaabbbbabbabbbbbbbaabaaaabbaaabbbaaabbbaaaaababaaaaabaaabababaabbabbbabaabaAabaaabbaa",
-		"aaabaaaabbbaaabbaaaabaaaaabbabbaaaa3aabbbabbaabbbbabbabbbbbbbaabaaaabbaaabbbaaabbbaaaaXJbf3AaaabaaabXJbf3AbbabbbabaabaAabaaabbaa");
+		"aaabaaaabbbaaabbaaaabaaaaabbabbaaaa3aabbbabbaabbbbabbabbbbbbbaabaaaabbaaabbbaaabbbaaaaYJbg3AaaabaaabYJbg3AbbabbbabaabaAabaaabbaa");
 
-	RUN_TEST(6, "abcabd", "XJbf3A",
+	RUN_TEST(5, "abcabd", "XJcf3A",
 		"abbaccddbcccacbddabcabcdacdbcabcdcccbcdcadbdddcabbcadcdccbabaabacccccabcababcabddbcbbcaadccab4dbaddbdccbdcdbcXccbbbcabbaabdcadccd",
-		"abbaccddbcccacbddabcabcdacdbcabcdcccbcdcadbdddcabbcadcdccbabaabacccccabcabXJbf3Adbcbbcaadccab4dbaddbdccbdcdbcXccbbbcabbaabdcadccd");
+		"abbaccddbcccacbddabcabcdacdbcabcdcccbcdcadbdddcabbcadcdccbabaabacccccabcabXJcf3Adbcbbcaadccab4dbaddbdccbdcdbcXccbbbcabbaabdcadccd");
 	
-	RUN_TEST(7, "bcbbab", "XJbf3A",
+	RUN_TEST(6, "bcbbab", "XIbf3A",
 		"cbcaccbcaaaacccbaacaaccc3cbccbbbcaacbbcbabEaabaacccccbccbcbabacabbbcbbcbacccbabcabaccaabaaabbabcaababaabacbccbbccbaccccaccbcbbab",
-		"cbcaccbcaaaacccbaacaaccc3cbccbbbcaacbbcbabEaabaacccccbccbcbabacabbbcbbcbacccbabcabaccaabaaabbabcaababaabacbccbbccbaccccaccXJbf3A");
+		"cbcaccbcaaaacccbaacaaccc3cbccbbbcaacbbcbabEaabaacccccbccbcbabacabbbcbbcbacccbabcabaccaabaaabbabcaababaabacbccbbccbaccccaccXIbf3A");
 
-	RUN_TEST(8, "bcbbab", "XJbf3A",
+	RUN_TEST(7, "bcbbab", "WJbf3A",
 		"cbcaccbcaaaacccbaacaaccc3cbccbbbcaacbbcbabEaabaacccccbccbcbabacabbbcbbcbacccbabcabaccaabaaabbabcaababaabacbccbbccbaccccaccbbcbba",
 		"cbcaccbcaaaacccbaacaaccc3cbccbbbcaacbbcbabEaabaacccccbccbcbabacabbbcbbcbacccbabcabaccaabaaabbabcaababaabacbccbbccbaccccaccbbcbba");
 
-	RUN_TEST(9, "bcbbab", "XJbf3A",
+	RUN_TEST(8, "bcbbab", "XJbf2A",
 		"bcbbacbcaccbcaaaacccbaacaaccc3cbccbbbcaacbbcbabEaabaacccccbccbcbabacabbbcbbcbacccbabcabaccaabaaabbabcaababaabacbccbbccbaccccaccb",
 		"bcbbacbcaccbcaaaacccbaacaaccc3cbccbbbcaacbbcbabEaabaacccccbccbcbabacabbbcbbcbacccbabcabaccaabaaabbabcaababaabacbccbbccbaccccaccb");
+
+	RUN_TEST(9, "kokos", "XJbf4",
+		"xxxkokofxxxkokosnussxxxkokokoxxxxxxkokofxxxkokosnussxxxkokokoxxxxxxkokofxxxkokosnussxxxkokokoxxxxxxkokofxxxkokosnussxxxkokokoxxx",
+		"xxxkokofxxxXJbf4nussxxxkokokoxxxxxxkokofxxxXJbf4nussxxxkokokoxxxxxxkokofxxxXJbf4nussxxxkokokoxxxxxxkokofxxxXJbf4nussxxxkokokoxxx");
 
 	return success;
 }
