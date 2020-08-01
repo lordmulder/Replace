@@ -145,6 +145,7 @@ static int _main(const int argc, const LPWSTR *const argv)
 	options_t options;
 	HANDLE std_in = GetStdHandle(STD_INPUT_HANDLE), std_out = GetStdHandle(STD_OUTPUT_HANDLE), std_err = GetStdHandle(STD_ERROR_HANDLE);
 	HANDLE input = INVALID_HANDLE_VALUE, output = INVALID_HANDLE_VALUE;
+	io_functions_t io_functions;
 	file_input_t *file_input_context = NULL;
 	file_output_t *file_output_context = NULL;
 	UINT previous_output_cp = 0U;
@@ -234,14 +235,14 @@ static int _main(const int argc, const LPWSTR *const argv)
 	/* Initialize search parameters and file names              */
 	/* -------------------------------------------------------- */
 
-	needle = options.binary_mode ? decode_hex_string(argv[param_offset], &needle_len) : utf16_to_bytes(argv[param_offset], &needle_len, options.ansi_cp ? CP_1252 : CP_UTF8);
+	needle = options.binary_mode ? decode_hex_string(argv[param_offset], &needle_len) : utf16_to_bytes(argv[param_offset], &needle_len, SELECTED_CP);
 	if(!needle)
 	{
 		print_message(std_err, "Error: Failed to decode 'needle' string!\n");
 		goto cleanup;
 	}
 
-	replacement = options.binary_mode ? decode_hex_string(argv[param_offset + 1U], &replacement_len) : utf16_to_bytes(argv[param_offset + 1U], &replacement_len, options.ansi_cp ? CP_1252 : CP_UTF8);
+	replacement = options.binary_mode ? decode_hex_string(argv[param_offset + 1U], &replacement_len) : utf16_to_bytes(argv[param_offset + 1U], &replacement_len, SELECTED_CP);
 	if(!replacement)
 	{
 		print_message(std_err, "Error: Failed to decode 'replacement' string!\n");
@@ -334,16 +335,28 @@ static int _main(const int argc, const LPWSTR *const argv)
 	}
 
 	/* -------------------------------------------------------- */
-	/* Search & replace!                                        */
+	/* Set up terminal                                          */
 	/* -------------------------------------------------------- */
 
 	if(GetFileType(output) == FILE_TYPE_CHAR)
 	{
-		previous_output_cp = GetConsoleOutputCP();
-		SetConsoleOutputCP(options.ansi_cp ? CP_1252 : CP_UTF8);
+		const UINT current_cp = GetConsoleOutputCP();
+		if((current_cp != 0U) && (current_cp != SELECTED_CP))
+		{
+			if(SetConsoleOutputCP(SELECTED_CP))
+			{
+				previous_output_cp = current_cp;
+			}
+		}
 	}
 
-	if(!search_and_replace(file_read_byte, (DWORD_PTR)file_input_context, file_write_byte, (DWORD_PTR)file_output_context, std_err, needle, needle_len, replacement, replacement_len, &options))
+	/* -------------------------------------------------------- */
+	/* Search & replace!                                        */
+	/* -------------------------------------------------------- */
+
+	init_io_functions(&io_functions, file_read_byte, file_write_byte, (DWORD_PTR)file_input_context, (DWORD_PTR)file_output_context);
+
+	if(!search_and_replace(&io_functions, std_err, needle, needle_len, replacement, replacement_len, &options))
 	{
 		print_message(std_err, g_process_aborted ? ABORTED_MESSAGE : "Error: Something went wrong. Output probably is incomplete!\n");
 		goto cleanup;

@@ -69,10 +69,12 @@ static __inline ULARGE_INTEGER make_uint64(const ULONGLONG value)
 /* ======================================================================= */
 
 #define CP_1252 1252
-#define TO_UPPER(C) ((((C) >= 0x61) && ((C) <= 0x7A)) ? ((C) - 0x20) : (C))
+#define SELECTED_CP ((UINT)(options.ansi_cp ? CP_1252 : CP_UTF8))
 
 #define NOT_EMPTY(STR) ((STR) && ((STR)[0U]))
 #define EMPTY(STR) (!NOT_EMPTY(STR))
+
+#define TO_UPPER(C) ((((C) >= 0x61) && ((C) <= 0x7A)) ? ((C) - 0x20) : (C))
 
 #define INVALID_CHAR 0xFF
 
@@ -339,12 +341,31 @@ memory_input_t;
 
 typedef struct memory_output_t
 { 
-	BYTE *data_out;
-	DWORD len;
+	DWORD capacity;
 	DWORD pos;
 	DWORD flushed;
+	BYTE buffer[];
 }
 memory_output_t;
+
+static void init_memory_input(memory_input_t *const input, const BYTE *const data, const DWORD data_len)
+{
+	input->data_in = data;
+	input->len = data_len;
+	input->pos = 0U;
+}
+
+static memory_output_t *alloc_memory_output(const DWORD capacity)
+{
+	memory_output_t *const output = (memory_output_t*) LocalAlloc(LPTR, sizeof(memory_output_t) + (sizeof(BYTE) * capacity));
+	if(output)
+	{
+		output->capacity = capacity;
+		output->pos = output->flushed = 0U;
+		return output;
+	}
+	return NULL;
+}
 
 static __inline BOOL memory_read_byte(BYTE *const output, const DWORD_PTR input, BOOL *const error_flag)
 {
@@ -362,9 +383,9 @@ static __inline BOOL memory_write_byte(const WORD input, const DWORD_PTR output,
 	memory_output_t *const ctx = (memory_output_t*) output;
 	if(input != IO_FLUSH)
 	{
-		if(ctx->pos < ctx->len)
+		if(ctx->pos < ctx->capacity)
 		{
-			ctx->data_out[ctx->pos++] = input & 0xFF;
+			ctx->buffer[ctx->pos++] = input & 0xFF;
 			return TRUE;
 		}
 		return FALSE;

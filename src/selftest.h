@@ -34,45 +34,40 @@
 } \
 while(0)
 
-static BOOL run_test(const HANDLE std_err, const CHAR *const needle, const CHAR *const replacement, const CHAR *const haystack, const CHAR *const expected)
+static BOOL run_test(const HANDLE logging, const CHAR *const needle, const CHAR *const replacement, const CHAR *const haystack, const CHAR *const expected)
 {
 	BOOL success = FALSE;
-	options_t options;
 	memory_input_t input_context;
-	memory_output_t output_context;
-	const CHAR *result = NULL;
-
+	memory_output_t *output_context = NULL;
+	io_functions_t io_functions;
+	options_t options;
 	const DWORD expected_len = lstrlenA(expected);
-	if(!(result = (CHAR*) LocalAlloc(LPTR, sizeof(CHAR) * ((2U * expected_len) + 1U))))
+
+	init_memory_input(&input_context, (const BYTE*)haystack, lstrlenA(haystack));
+	SecureZeroMemory(&options, sizeof(options_t));
+
+	if(!(output_context = alloc_memory_output(expected_len + 2U)))
 	{
 		goto cleanup;
 	}
 
-	SecureZeroMemory(&options, sizeof(options_t));
-	SecureZeroMemory(&input_context, sizeof(memory_input_t));
-	SecureZeroMemory(&output_context, sizeof(memory_output_t));
+	init_io_functions(&io_functions, memory_read_byte, memory_write_byte, (DWORD_PTR)&input_context, (DWORD_PTR)output_context);
 
-	input_context.data_in = (const BYTE*) haystack;
-	input_context.len = lstrlenA(haystack);
-
-	output_context.data_out = (BYTE*) result;
-	output_context.len = 2U * expected_len;
-
-	if(!search_and_replace(memory_read_byte, (DWORD_PTR)&input_context, memory_write_byte, (DWORD_PTR)&output_context, std_err, (const BYTE*)needle, lstrlenA(needle), (const BYTE*)replacement, lstrlenA(replacement), &options))
+	if(!search_and_replace(&io_functions, logging, (const BYTE*)needle, lstrlenA(needle), (const BYTE*)replacement, lstrlenA(replacement), &options))
 	{
 		goto cleanup;
 	}
 	
-	if(output_context.flushed == expected_len)
+	if(output_context->flushed == expected_len)
 	{
-		success = (CompareStringA(LOCALE_INVARIANT, 0, result, output_context.flushed, expected, lstrlenA(expected)) == CSTR_EQUAL);
+		success = (CompareStringA(LOCALE_INVARIANT, 0, (const CHAR*)output_context->buffer, output_context->flushed, expected, lstrlenA(expected)) == CSTR_EQUAL);
 	}
 
 cleanup:
 
-	if(result)
+	if(output_context)
 	{
-		LocalFree((HLOCAL)result);
+		LocalFree((HLOCAL)output_context);
 	}
 
 	return success;
