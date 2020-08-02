@@ -10,26 +10,27 @@
 #ifndef INC_SELFTEST_H
 #define INC_SELFTEST_H
 
-#include "replace.h"
+#include "libreplace/replace.h"
+#include "utils.h"
 
 /* ======================================================================= */
-/* Self-test                                                               */
+/* Run a single test                                                       */
 /* ======================================================================= */
 
 #define RUN_TEST(X, ...) do \
 { \
 	if(run_test(std_err, __VA_ARGS__)) \
 	{ \
-		print_message(std_err, "[Self-Test] Test case #" #X " succeeded.\n"); \
+		libreplace_print(std_err, "[Self-Test] Test case #" #X " succeeded.\n"); \
 	} \
 	else \
 	{ \
-		print_message(std_err, "[Self-Test] Test case #" #X " failed !!!\n"); \
+		libreplace_print(std_err, "[Self-Test] Test case #" #X " failed !!!\n"); \
 		success = FALSE; \
 	} \
-	if(g_abort_requested || g_process_aborted) \
+	if(g_abort_requested) \
 	{ \
-		return FALSE; \
+		return FALSE; /*aborted by user*/ \
 	} \
 } \
 while(0)
@@ -39,12 +40,12 @@ static BOOL run_test(const HANDLE logging, const CHAR *const needle, const CHAR 
 	BOOL success = FALSE;
 	memory_input_t input_context;
 	memory_output_t *output_context = NULL;
-	io_functions_t io_functions;
-	options_t options;
+	libreplace_io_t io_functions;
+	libreplace_flags_t options;
 	const DWORD expected_len = lstrlenA(expected);
 
 	init_memory_input(&input_context, (const BYTE*)haystack, lstrlenA(haystack));
-	SecureZeroMemory(&options, sizeof(options_t));
+	SecureZeroMemory(&options, sizeof(libreplace_flags_t));
 
 	if(!(output_context = alloc_memory_output(expected_len + 2U)))
 	{
@@ -53,7 +54,7 @@ static BOOL run_test(const HANDLE logging, const CHAR *const needle, const CHAR 
 
 	init_io_functions(&io_functions, memory_read_byte, memory_write_byte, (DWORD_PTR)&input_context, (DWORD_PTR)output_context);
 
-	if(!search_and_replace(&io_functions, logging, (const BYTE*)needle, lstrlenA(needle), (const BYTE*)replacement, lstrlenA(replacement), &options))
+	if(!libreplace_search_and_replace(&io_functions, logging, (const BYTE*)needle, lstrlenA(needle), (const BYTE*)replacement, lstrlenA(replacement), &options, &g_abort_requested))
 	{
 		goto cleanup;
 	}
@@ -72,6 +73,10 @@ cleanup:
 
 	return success;
 }
+
+/* ======================================================================= */
+/* Self-test                                                               */
+/* ======================================================================= */
 
 static BOOL self_test(const HANDLE std_err)
 {

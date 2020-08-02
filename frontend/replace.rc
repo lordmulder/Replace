@@ -6,6 +6,12 @@
 #include "WinResrc.h" //"afxres.h"
 #undef APSTUDIO_READONLY_SYMBOLS
 
+#include "../libreplace/include/libreplace/replace.h"
+
+#define __VERSION_STR__(X, Y, Z) #X "." #Y "." #Z
+#define _VERSION_STR_(X, Y, Z) __VERSION_STR__(X, Y, Z)
+#define VERSION_STR _VERSION_STR_(LIBREPLACE_VERSION_MAJOR, LIBREPLACE_VERSION_MINOR, LIBREPLACE_VERSION_PATCH)
+
 /////////////////////////////////////////////////////////////////////////////
 //
 // Neutral resources
@@ -20,8 +26,8 @@ LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
 // Version
 //
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,4,0,0
- PRODUCTVERSION 1,4,0,0
+ FILEVERSION LIBREPLACE_VERSION_MAJOR,LIBREPLACE_VERSION_MINOR,LIBREPLACE_VERSION_PATCH,0
+ PRODUCTVERSION LIBREPLACE_VERSION_MAJOR,LIBREPLACE_VERSION_MINOR,LIBREPLACE_VERSION_PATCH,0
  FILEFLAGSMASK 0x17L
 #ifdef _DEBUG
  FILEFLAGS 0x3L
@@ -38,8 +44,8 @@ BEGIN
         BEGIN
             VALUE "ProductName", "Replace"
             VALUE "FileDescription", "Replace"
-            VALUE "ProductVersion", "1.4.0"
-            VALUE "FileVersion", "1.4.0"
+            VALUE "ProductVersion", VERSION_STR
+            VALUE "FileVersion", VERSION_STR
             VALUE "InternalName", "Replace"
             VALUE "OriginalFilename", "Replace.exe"
             VALUE "LegalCopyright", "Created by LoRd_MuldeR <MuldeR2@GMX.de>"

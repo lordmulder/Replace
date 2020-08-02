@@ -10,60 +10,22 @@
 #ifndef INC_UTILS_H
 #define INC_UTILS_H
 
-#define WIN32_LEAN_AND_MEAN 1
-
-#include <Windows.h>
-#include <ShellAPI.h>
-
-#ifdef _DEBUG
-#define HAVE_TRACE 1
-#define TRACE(OUT, FMT, ...) print_message_fmt((OUT), "[DEBUG] " FMT, __VA_ARGS__)
-#else
-#define HAVE_TRACE 0
-#define TRACE(OUT, FMT, ...) __noop()
-#endif
+#include "libreplace/replace.h"
 
 /* CLI options*/
 typedef struct options_t
 { 
 	BOOL show_help;
-	BOOL case_insensitive;
-	BOOL replace_once;
 	BOOL ansi_cp;
 	BOOL escpae_chars;
-	BOOL force_sync;
-	BOOL verbose;
 	BOOL binary_mode;
 	BOOL self_test;
+	libreplace_flags_t flags;
 }
 options_t;
 
 /* Abort flag */
-static volatile BOOL g_abort_requested = FALSE;
-static volatile BOOL g_process_aborted = FALSE;
-
-/* Flush flag */
-#define IO_FLUSH ((WORD)-1)
-
-/* ======================================================================= */
-/* Utilities                                                               */
-/* ======================================================================= */
-
-static __inline void increment(LONG *const value, const LONG limit)
-{
-	*value += 1U;
-	if(*value >= limit)
-	{
-		*value = 0U;
-	}
-}
-
-static __inline ULARGE_INTEGER make_uint64(const ULONGLONG value)
-{
-	ULARGE_INTEGER result;
-	result.QuadPart = value;
-	return result;
-}
+volatile BOOL g_abort_requested = FALSE;
 
 /* ======================================================================= */
 /* String Routines                                                         */
@@ -74,8 +36,6 @@ static __inline ULARGE_INTEGER make_uint64(const ULONGLONG value)
 
 #define NOT_EMPTY(STR) ((STR) && ((STR)[0U]))
 #define EMPTY(STR) (!NOT_EMPTY(STR))
-
-#define TO_UPPER(C) ((((C) >= 0x61) && ((C) <= 0x7A)) ? ((C) - 0x20) : (C))
 
 #define INVALID_CHAR 0xFF
 
@@ -105,11 +65,6 @@ static BYTE *utf16_to_bytes(const WCHAR *const input, LONG *const length_out, co
 
 	LocalFree(buffer);
 	return NULL;
-}
-
-static __inline BOOL compare_char(const BYTE char_a, const BYTE char_b, const BOOL ignore_case)
-{
-	return ignore_case ? (TO_UPPER(char_a) == TO_UPPER(char_b)) : (char_a == char_b);
 }
 
 static __inline BYTE decode_hex_char(const WCHAR c)
@@ -440,7 +395,7 @@ static __inline BOOL memory_read_byte(BYTE *const output, const DWORD_PTR input,
 static __inline BOOL memory_write_byte(const WORD input, const DWORD_PTR output, const BOOL sync)
 {
 	memory_output_t *const ctx = (memory_output_t*) output;
-	if(input != IO_FLUSH)
+	if(input != LIBREPLACE_FLUSH)
 	{
 		if(ctx->pos < ctx->capacity)
 		{
@@ -530,7 +485,7 @@ static __inline BOOL file_read_byte(BYTE *const output, const DWORD_PTR input, B
 static __inline BOOL file_write_byte(const WORD input, const DWORD_PTR output, const BOOL sync)
 {
 	file_output_t *const ctx = (file_output_t*) output;
-	if(input != IO_FLUSH)
+	if(input != LIBREPLACE_FLUSH)
 	{
 		ctx->buffer[ctx->pos++] = input & 0xFF;
 		if(ctx->pos >= IO_BUFF_SIZE)
@@ -575,28 +530,16 @@ static __inline BOOL file_write_byte(const WORD input, const DWORD_PTR output, c
 }
 
 /* ======================================================================= */
-/* Logging                                                                 */
+/* Miscellaneous                                                           */
 /* ======================================================================= */
 
-static __inline BOOL print_message(const HANDLE output, const CHAR *const text)
+static __inline void init_io_functions(libreplace_io_t *const io_functions, const libreplace_rd_func_t rd_func, const libreplace_wr_func_t wr_func, const DWORD_PTR context_rd, const DWORD_PTR context_wr)
 {
-	DWORD bytes_written;
-	return WriteFile(output, text, lstrlenA(text), &bytes_written, NULL);
-}
-
-static __inline BOOL print_message_fmt(const HANDLE output, const CHAR *const format, ...)
-{
-	CHAR temp[256U];
-	va_list ap;
-	int result;
-	va_start(ap, format);
-	result = wvsprintfA(temp, format, ap);
-	va_end(ap);
-	if(result > 0)
-	{
-		return print_message(output, temp);
-	}
-	return FALSE;
+	SecureZeroMemory(io_functions, sizeof(libreplace_io_t));
+	io_functions->func_rd = rd_func;
+	io_functions->func_wr = wr_func;
+	io_functions->context_rd = context_rd;
+	io_functions->context_wr = context_wr;
 }
 
 #endif /*INC_UTILS_H*/

@@ -1,7 +1,12 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 11.00
 # Visual Studio 2010
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "replace", "replace.vcxproj", "{4AB52F90-A3E1-4382-89AC-A2F27A08A137}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "replace", "frontend\replace.vcxproj", "{4AB52F90-A3E1-4382-89AC-A2F27A08A137}"
+	ProjectSection(ProjectDependencies) = postProject
+		{FEC631E9-F732-49AC-9E9D-EC710D589E95} = {FEC631E9-F732-49AC-9E9D-EC710D589E95}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libreplace", "libreplace\libreplace.vcxproj", "{FEC631E9-F732-49AC-9E9D-EC710D589E95}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -19,6 +24,14 @@ Global
 		{4AB52F90-A3E1-4382-89AC-A2F27A08A137}.Release|Win32.Build.0 = Release|Win32
 		{4AB52F90-A3E1-4382-89AC-A2F27A08A137}.Release|x64.ActiveCfg = Release|x64
 		{4AB52F90-A3E1-4382-89AC-A2F27A08A137}.Release|x64.Build.0 = Release|x64
+		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Debug|Win32.ActiveCfg = Debug|Win32
+		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Debug|Win32.Build.0 = Debug|Win32
+		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Debug|x64.ActiveCfg = Debug|x64
+		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Debug|x64.Build.0 = Debug|x64
+		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Release|Win32.ActiveCfg = Release|Win32
+		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Release|Win32.Build.0 = Release|Win32
+		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Release|x64.ActiveCfg = Release|x64
+		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

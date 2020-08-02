@@ -1,8 +1,8 @@
-/*.aps
-/*.opensdf
-/*.sdf
-/*.suo
-/*.user
+*.aps
+*.opensdf
+*.sdf
+*.suo
+*.user
 /bin
 /etc/test-cases/**/*.txt
 /etc/test-cases/out
