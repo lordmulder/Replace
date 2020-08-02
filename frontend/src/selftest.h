@@ -19,13 +19,13 @@
 
 #define RUN_TEST(X, ...) do \
 { \
-	if(run_test(std_err, __VA_ARGS__)) \
+	if(run_test(log_output, __VA_ARGS__)) \
 	{ \
-		libreplace_print(std_err, "[Self-Test] Test case #" #X " succeeded.\n"); \
+		print_text(log_output, "[Self-Test] Test case #" #X " succeeded.\n"); \
 	} \
 	else \
 	{ \
-		libreplace_print(std_err, "[Self-Test] Test case #" #X " failed !!!\n"); \
+		print_text(log_output, "[Self-Test] Test case #" #X " failed !!!\n"); \
 		success = FALSE; \
 	} \
 	if(g_abort_requested) \
@@ -35,13 +35,15 @@
 } \
 while(0)
 
-static BOOL run_test(const HANDLE logging, const CHAR *const needle, const CHAR *const replacement, const CHAR *const haystack, const CHAR *const expected)
+static BOOL run_test(const HANDLE log_output, const CHAR *const needle, const CHAR *const replacement, const CHAR *const haystack, const CHAR *const expected)
 {
 	BOOL success = FALSE;
 	memory_input_t input_context;
 	memory_output_t *output_context = NULL;
+	libreplace_logger_t logger;
 	libreplace_io_t io_functions;
 	libreplace_flags_t options;
+
 	const DWORD expected_len = lstrlenA(expected);
 
 	init_memory_input(&input_context, (const BYTE*)haystack, lstrlenA(haystack));
@@ -52,9 +54,10 @@ static BOOL run_test(const HANDLE logging, const CHAR *const needle, const CHAR 
 		goto cleanup;
 	}
 
+	init_logging_functions(&logger, print_text_ptr, (DWORD_PTR)log_output);
 	init_io_functions(&io_functions, memory_read_byte, memory_write_byte, (DWORD_PTR)&input_context, (DWORD_PTR)output_context);
 
-	if(!libreplace_search_and_replace(&io_functions, logging, (const BYTE*)needle, lstrlenA(needle), (const BYTE*)replacement, lstrlenA(replacement), &options, &g_abort_requested))
+	if(!libreplace_search_and_replace(&io_functions, &logger, (const BYTE*)needle, lstrlenA(needle), (const BYTE*)replacement, lstrlenA(replacement), &options, &g_abort_requested))
 	{
 		goto cleanup;
 	}
@@ -78,7 +81,7 @@ cleanup:
 /* Self-test                                                               */
 /* ======================================================================= */
 
-static BOOL self_test(const HANDLE std_err)
+static BOOL self_test(const HANDLE log_output)
 {
 	BOOL success = TRUE;
 

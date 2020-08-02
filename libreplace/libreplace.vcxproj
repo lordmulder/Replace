@@ -22,7 +22,6 @@
     <ClCompile Include="src\replace.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\libreplace\common.h" />
     <ClInclude Include="include\libreplace\replace.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

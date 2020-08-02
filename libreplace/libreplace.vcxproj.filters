@@ -23,8 +23,5 @@
     <ClInclude Include="include\libreplace\replace.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\libreplace\common.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
 </Project>

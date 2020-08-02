@@ -33,6 +33,15 @@ typedef struct libreplace_io_t
 }
 libreplace_io_t;
 
+typedef BOOL (*libreplace_logging_func_t)(const DWORD_PTR context, const CHAR *const text);
+
+typedef struct libreplace_logger_t
+{
+	libreplace_logging_func_t logging_func;
+	DWORD_PTR context;
+}
+libreplace_logger_t;
+
 typedef struct libreplace_flags_t
 { 
 	BOOL case_insensitive;
@@ -42,6 +51,6 @@ typedef struct libreplace_flags_t
 }
 libreplace_flags_t;
 
-BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, const HANDLE logging, const BYTE *const needle, const LONG needle_len, const BYTE *const replacement, const LONG replacement_len, const libreplace_flags_t *const options, volatile BOOL *const abort_fag);
+BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, const libreplace_logger_t *const logger, const BYTE *const needle, const LONG needle_len, const BYTE *const replacement, const LONG replacement_len, const libreplace_flags_t *const options, volatile BOOL *const abort_fag);
 
 #endif /*INC_LIBREPLACE_H*/

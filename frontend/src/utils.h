@@ -537,8 +537,34 @@ static __inline BOOL file_write_byte(const WORD input, const DWORD_PTR output, c
 }
 
 /* ======================================================================= */
+/* Logging                                                                 */
+/* ======================================================================= */
+
+static __inline BOOL print_text(const HANDLE output, const CHAR *const text)
+{
+	DWORD bytes_written;
+	if(output != INVALID_HANDLE_VALUE)
+	{
+		return WriteFile(output, text, lstrlenA(text), &bytes_written, NULL);
+	}
+	return TRUE;
+}
+
+static __inline BOOL print_text_ptr(const DWORD_PTR context, const CHAR *const text)
+{
+	return print_text((HANDLE)context, text);
+}
+
+/* ======================================================================= */
 /* Miscellaneous                                                           */
 /* ======================================================================= */
+
+static __inline void init_logging_functions(libreplace_logger_t *const logger, const libreplace_logging_func_t logging_func, const DWORD_PTR context)
+{
+	SecureZeroMemory(logger, sizeof(libreplace_logger_t));
+	logger->logging_func = logging_func;
+	logger->context = context;
+}
 
 static __inline void init_io_functions(libreplace_io_t *const io_functions, const libreplace_rd_func_t rd_func, const libreplace_wr_func_t wr_func, const DWORD_PTR context_rd, const DWORD_PTR context_wr)
 {
