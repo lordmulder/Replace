@@ -19,7 +19,7 @@
 
 #define CHECK_ABORT_REQUEST() do \
 { \
-	if(*abort_fag) \
+	if(*abort_flag) \
 	{ \
 		libreplace_print(logger, "Process cancelled by user --> aborting!\n"); \
 		goto finished; \
@@ -119,7 +119,7 @@ static LONG *libreplace_compute_prefixes(const libreplace_logger_t *const logger
 	return prefix;
 }
 
-BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, const libreplace_logger_t *const logger, const BYTE *const needle, const LONG needle_len, const BYTE *const replacement, const LONG replacement_len, const libreplace_flags_t *const options, volatile BOOL *const abort_fag)
+BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, const libreplace_logger_t *const logger, const BYTE *const needle, const LONG needle_len, const BYTE *const replacement, const LONG replacement_len, const libreplace_flags_t *const options, volatile BOOL *const abort_flag)
 {
 	BOOL success = FALSE, pending_input = FALSE, error_flag = FALSE;
 	BYTE char_input;
