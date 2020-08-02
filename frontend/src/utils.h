@@ -174,11 +174,18 @@ static BOOL expand_escape_chars(BYTE *const string, LONG *const len)
 			++pos_out;
 		}
 	}
-	if(*len > pos_out)
+	if(!flag)
 	{
-		string[*len = pos_out] = '\0';
+		if(*len > pos_out)
+		{
+			string[*len = pos_out] = '\0';
+		}
+		return TRUE;
 	}
-	return TRUE;
+	else
+	{
+		return FALSE;
+	}
 }
 
 /* ======================================================================= */
