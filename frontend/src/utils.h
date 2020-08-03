@@ -300,7 +300,8 @@ static const HANDLE open_file(const WCHAR *const file_name, const BOOL write_mod
 		}
 		if((handle = CreateFileW(file_name, write_mode ? GENERIC_WRITE : GENERIC_READ, write_mode ? 0U: FILE_SHARE_READ, NULL, write_mode ? CREATE_ALWAYS : OPEN_EXISTING, 0, NULL)) == INVALID_HANDLE_VALUE)
 		{
-			if((!write_mode) && (GetLastError() == ERROR_FILE_NOT_FOUND))
+			const DWORD error = GetLastError();
+			if(((!write_mode) && (error == ERROR_FILE_NOT_FOUND)) || (error == ERROR_PATH_NOT_FOUND) || (error == ERROR_INVALID_NAME))
 			{
 				break;
 			}
