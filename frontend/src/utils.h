@@ -192,35 +192,47 @@ static BOOL expand_escape_chars(BYTE *const string, LONG *const len)
 /* Random Numbers                                                          */
 /* ======================================================================= */
 
-static __inline DWORD random_seed(void)
+typedef struct random_t
 {
-	LARGE_INTEGER count;
-	if(QueryPerformanceCounter(&count))
+	DWORD a, b, c, d;
+	DWORD counter;
+}
+random_t;
+
+static void random_seed(random_t *const state)
+{
+	LARGE_INTEGER counter;
+	FILETIME time;
+	state->a = 65599U * GetCurrentThreadId() + GetCurrentProcessId();
+	do
 	{
-		
-		return (31U * ((31U * GetCurrentProcessId()) + count.HighPart)) + count.LowPart;
+		GetSystemTimeAsFileTime(&time);
+		QueryPerformanceCounter(&counter);
+		state->b = GetTickCount();
+		state->c = 65599U * time.dwHighDateTime + time.dwLowDateTime;
+		state->d = 65599U * counter.HighPart + counter.LowPart;
 	}
-	else
-	{
-		return (31U * GetCurrentProcessId()) + GetTickCount();
-	}
+	while((!state->a) && (!state->b) && (!state->c) && (!state->d));
+	state->counter = 0U;
 }
 
-static __inline DWORD random_next(DWORD *const seed)
+static __inline DWORD random_next(random_t *const state)
 {
-	const DWORD rand = *seed;
-	*seed = (*seed) * 134775813U + 1U;
-	return rand;
+	DWORD t = state->d;
+	const DWORD s = state->a;
+	state->d = state->c;
+	state->c = state->b;
+	state->b = s;
+	t ^= t >> 2;
+	t ^= t << 1;
+	t ^= s ^ (s << 4);
+	state->a = t;
+	return t + (state->counter += 362437U);
 }
 
 /* ======================================================================= */
 /* File System Routines                                                    */
 /* ======================================================================= */
-
-static BOOL path_exists(const WCHAR *const path)
-{
-	return (GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES);
-}
 
 static BOOL file_exists(const WCHAR *const path)
 {
@@ -276,7 +288,32 @@ static const WCHAR *get_directory_part(const WCHAR *const file_path)
 	return NULL;
 }
 
-static const WCHAR *generate_temp_file(const WCHAR *const directory)
+static const HANDLE open_file(const WCHAR *const file_name, const BOOL write_mode)
+{
+	HANDLE handle = INVALID_HANDLE_VALUE;
+	DWORD retry;
+	for(retry = 0U; retry < 32U; ++retry)
+	{
+		if(retry > 0U)
+		{
+			Sleep(retry); /*delay before retry*/
+		}
+		if((handle = CreateFileW(file_name, write_mode ? GENERIC_WRITE : GENERIC_READ, write_mode ? 0U: FILE_SHARE_READ, NULL, write_mode ? CREATE_ALWAYS : OPEN_EXISTING, 0, NULL)) == INVALID_HANDLE_VALUE)
+		{
+			if((!write_mode) && (GetLastError() == ERROR_FILE_NOT_FOUND))
+			{
+				break;
+			}
+		}
+		else
+		{
+			return handle;
+		}
+	}
+	return INVALID_HANDLE_VALUE;
+}
+
+static const WCHAR *generate_temp_file(const WCHAR *const directory, HANDLE *const handle)
 {
 	static const WCHAR *const RAND_TEMPLATE = L"%s\\~%07X.tmp";
 	static const DWORD RAND_MASK = 0xFFFFFFF;
@@ -285,17 +322,25 @@ static const WCHAR *generate_temp_file(const WCHAR *const directory)
 	WCHAR *const temp = (WCHAR*) LocalAlloc(LPTR, sizeof(WCHAR) * (lstrlenW(prefix) + 14U));
 	if(temp)
 	{
-		DWORD round, iter, seed;
-		for(round = 0U; round < 4099U; ++round)
+		DWORD round, fail_count = 0U;
+		random_t random_state;
+		random_seed(&random_state);
+		for(round = 0U; (round < 16777213U) && (!g_abort_requested); ++round)
 		{
-			seed = random_seed();
-			for(iter = 0U; iter < 4099U; ++iter)
+			wsprintfW(temp, RAND_TEMPLATE, prefix, random_next(&random_state) & RAND_MASK);
+			if((*handle = CreateFileW(temp, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_NEW, 0, NULL)) == INVALID_HANDLE_VALUE)
 			{
-				wsprintfW(temp, RAND_TEMPLATE, prefix, random_next(&seed) & RAND_MASK);
-				if(!path_exists(temp))
+				if(GetLastError() != ERROR_FILE_EXISTS)
 				{
-					return temp;
+					if(++fail_count >= 128U)
+					{
+						break;
+					}
 				}
+			}
+			else
+			{
+				return temp;
 			}
 		}
 		LocalFree(temp);
@@ -307,7 +352,7 @@ static const WCHAR *generate_temp_file(const WCHAR *const directory)
 static const BOOL move_file(const WCHAR *const file_src, const WCHAR *const file_dst)
 {
 	DWORD retry;
-	for(retry = 0U; retry < 128; ++retry)
+	for(retry = 0U; retry < 128U; ++retry)
 	{
 		if(retry > 0U)
 		{
@@ -495,43 +540,27 @@ static __inline BOOL file_write_byte(const WORD input, const DWORD_PTR output, c
 	if(input != LIBREPLACE_FLUSH)
 	{
 		ctx->buffer[ctx->pos++] = input & 0xFF;
-		if(ctx->pos >= IO_BUFF_SIZE)
-		{
-			DWORD bytes_written;
-			if(!WriteFile(ctx->handle_out, ctx->buffer, IO_BUFF_SIZE, &bytes_written, NULL))
-			{
-				return FALSE;
-			}
-			if(bytes_written < IO_BUFF_SIZE)
-			{
-				return FALSE;
-			}
-			if(sync)
-			{
-				FlushFileBuffers(ctx->handle_out);
-			}
-			ctx->pos = 0U;
-		}
 	}
-	else
+	if((ctx->pos >= IO_BUFF_SIZE) || (input == LIBREPLACE_FLUSH))
 	{
-		if(ctx->pos > 0)
+		DWORD bytes_written = 0U, offset = 0U;
+		while(offset < ctx->pos)
 		{
-			DWORD bytes_written;
-			if(!WriteFile(ctx->handle_out, ctx->buffer, ctx->pos, &bytes_written, NULL))
+			if(!WriteFile(ctx->handle_out, ctx->buffer + offset, ctx->pos - offset, &bytes_written, NULL))
 			{
 				return FALSE;
 			}
-			if(bytes_written < ctx->pos)
+			if(bytes_written < 1U)
 			{
 				return FALSE;
 			}
-			if(sync)
-			{
-				FlushFileBuffers(ctx->handle_out);
-			}
-			ctx->pos = 0U;
+			offset += bytes_written;
 		}
+		if(sync)
+		{
+			FlushFileBuffers(ctx->handle_out);
+		}
+		ctx->pos = 0U;
 	}
 	return TRUE;
 }

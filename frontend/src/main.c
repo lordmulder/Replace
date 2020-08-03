@@ -279,7 +279,7 @@ static int _main(const int argc, const LPWSTR *const argv)
 
 	if(NOT_EMPTY(source_file) && (lstrcmpiW(source_file, L"-") != 0))
 	{
-		input = CreateFileW(source_file, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+		input = open_file(source_file, FALSE);
 	}
 	else
 	{
@@ -310,28 +310,31 @@ static int _main(const int argc, const LPWSTR *const argv)
 		}
 		if(get_readonly_attribute(input))
 		{
-			print_text(std_err, "Error: The write-protected file cannot be modified in-place!\n");
+			print_text(std_err, "Error: Sorry, the write-protected file cannot be modified in-place!\n");
 			goto cleanup;
 		}
-		temp_file = generate_temp_file(temp_path = get_directory_part(source_file));
+		temp_file = generate_temp_file(temp_path = get_directory_part(source_file), &output);
 		if(EMPTY(temp_file))
 		{
-			print_text(std_err, "Error: Failed to generate file name for temporary data!\n");
+			print_text(std_err, g_abort_requested ? ABORTED_MESSAGE : "Error: Failed to create temporary file!\n");
 			goto cleanup;
 		}
 	}
 
-	if(NOT_EMPTY(temp_file) || (NOT_EMPTY(output_file) && (lstrcmpiW(output_file, L"-") != 0)))
+	if(EMPTY(temp_file))
 	{
-		output = CreateFileW(NOT_EMPTY(temp_file) ? temp_file : output_file, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
-	}
-	else
-	{
-		if(options.flags.verbose)
+		if(NOT_EMPTY(output_file) && (lstrcmpiW(output_file, L"-") != 0))
 		{
-			print_text(std_err, "Writing output to STDOUT stream.\n");
+			output = open_file(output_file, TRUE);
 		}
-		output = std_out;
+		else
+		{
+			if(options.flags.verbose)
+			{
+				print_text(std_err, "Writing output to STDOUT stream.\n");
+			}
+			output = std_out;
+		}
 	}
 
 	if(output == INVALID_HANDLE_VALUE)
