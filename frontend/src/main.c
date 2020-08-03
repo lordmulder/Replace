@@ -35,7 +35,8 @@ static void print_manpage(const HANDLE std_err)
 	print_text(std_err, "  -e  Enable interpretation of backslash escape sequences in all parameters\n");
 	print_text(std_err, "  -f  Force immediate flushing of file buffers (may degrade performance)\n");
 	print_text(std_err, "  -b  Binary mode; parameters '<needle>' and '<replacement>' are Hex strings\n");
-	print_text(std_err, "  -v  Enable verbose mode; prints additional diagnostic information\n");
+	print_text(std_err, "  -y  Try to overwrite read-only files; i.e. clears the read-only flag\n");
+	print_text(std_err, "  -v  Enable verbose mode; print additional diagnostic information to STDERR\n");
 	print_text(std_err, "  -t  Run self-test and exit\n");
 	print_text(std_err, "  -h  Display this help text and exit\n\n");
 	print_text(std_err, "Notes:\n");
@@ -119,6 +120,9 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 					break;
 				case L'v':
 					options->flags.verbose = TRUE;
+					break;
+				case L'y':
+					options->force_overwrite = TRUE;
 					break;
 				default:
 					print_text(std_err, "Error: Invalid command-line option encountered!\n");
@@ -306,9 +310,9 @@ static int _main(const int argc, const LPWSTR *const argv)
 	{
 		if(options.flags.verbose)
 		{
-			print_text(std_err, "Using in-place processing mode this time.\n");
+			print_text(std_err, "Using in-place file processing mode this time.\n");
 		}
-		if(get_readonly_attribute(input))
+		if((!options.force_overwrite) && has_readonly_attribute(input))
 		{
 			print_text(std_err, "Error: Sorry, the write-protected file cannot be modified in-place!\n");
 			goto cleanup;
@@ -325,6 +329,10 @@ static int _main(const int argc, const LPWSTR *const argv)
 	{
 		if(NOT_EMPTY(output_file) && (lstrcmpiW(output_file, L"-") != 0))
 		{
+			if(options.force_overwrite)
+			{
+				clear_readonly_attribute(output_file);
+			}
 			output = open_file(output_file, TRUE);
 		}
 		else
@@ -402,6 +410,10 @@ static int _main(const int argc, const LPWSTR *const argv)
 
 	if(NOT_EMPTY(temp_file))
 	{
+		if(options.force_overwrite)
+		{
+			clear_readonly_attribute(source_file);
+		}
 		if(!move_file(temp_file, source_file))
 		{
 			print_text(std_err, "Error: Failed to replace the original file with modified one!\n");

@@ -19,6 +19,7 @@ typedef struct options_t
 	BOOL ansi_cp;
 	BOOL escpae_chars;
 	BOOL binary_mode;
+	BOOL force_overwrite;
 	BOOL self_test;
 	libreplace_flags_t flags;
 }
@@ -240,13 +241,30 @@ static BOOL file_exists(const WCHAR *const path)
 	return (attribs != INVALID_FILE_ATTRIBUTES) && (!(attribs & FILE_ATTRIBUTE_DIRECTORY));
 }
 
-static BOOL get_readonly_attribute(const HANDLE handle)
+static BOOL has_readonly_attribute(const HANDLE handle)
 {
 	BY_HANDLE_FILE_INFORMATION file_info;
 	SecureZeroMemory(&file_info, sizeof(BY_HANDLE_FILE_INFORMATION));
 	if(GetFileInformationByHandle(handle, &file_info))
 	{
 		if((file_info.dwFileAttributes != INVALID_FILE_ATTRIBUTES) && (file_info.dwFileAttributes & FILE_ATTRIBUTE_READONLY))
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+static BOOL clear_readonly_attribute(const WCHAR *const path)
+{
+	const DWORD attribs = GetFileAttributesW(path);
+	if(attribs != INVALID_FILE_ATTRIBUTES)
+	{
+		if(attribs & FILE_ATTRIBUTE_READONLY)
+		{
+			return SetFileAttributesW(path, (attribs == FILE_ATTRIBUTE_READONLY) ? FILE_ATTRIBUTE_NORMAL : (attribs & (~FILE_ATTRIBUTE_READONLY)));
+		}
+		else
 		{
 			return TRUE;
 		}

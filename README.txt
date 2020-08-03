@@ -1,4 +1,4 @@
-Replace, by LoRd_MuldeR <MuldeR2@GMX.de>
+Replace v1.4.1 [Aug  3 2020], by LoRd_MuldeR <MuldeR2@GMX.de>
 
 Replaces any occurrence of '<needle>' in '<input_file>' with '<replacement>'.
 The modified contents are then written to '<output_file>'.
@@ -13,7 +13,8 @@ Options:
   -e  Enable interpretation of backslash escape sequences in all parameters
   -f  Force immediate flushing of file buffers (may degrade performance)
   -b  Binary mode; parameters '<needle>' and '<replacement>' are Hex strings
-  -v  Enable verbose mode; prints additional diagnostic information
+  -y  Try to overwrite read-only files; i.e. clears the read-only flag
+  -v  Enable verbose mode; print additional diagnostic information to STDERR
   -t  Run self-test and exit
   -h  Display this help text and exit
 
