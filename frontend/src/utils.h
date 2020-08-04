@@ -535,19 +535,34 @@ static __inline BOOL file_read_byte(BYTE *const output, const DWORD_PTR input, B
 	file_input_t *const ctx = (file_input_t*) input;
 	if(ctx->pos >= ctx->avail)
 	{
-		ctx->pos = 0U;
-		if(!ReadFile(ctx->handle_in, ctx->buffer, IO_BUFF_SIZE, &ctx->avail, NULL))
+		ctx->pos = ctx->avail = 0U;
+		for(;;)
 		{
-			const DWORD error_code = GetLastError();
-			if((error_code != ERROR_HANDLE_EOF) && (error_code != ERROR_BROKEN_PIPE))
+			if(!ReadFile(ctx->handle_in, ctx->buffer, IO_BUFF_SIZE, &ctx->avail, NULL))
 			{
-				*error_flag = TRUE;
+				const DWORD error_code = GetLastError();
+				if(error_code == ERROR_NO_DATA)
+				{
+					Sleep(0U); /*wait a little before retry*/
+					continue;
+				}
+				else
+				{
+					if((error_code != ERROR_HANDLE_EOF) && (error_code != ERROR_BROKEN_PIPE))
+					{
+						*error_flag = TRUE;
+					}
+					return FALSE;
+				}
 			}
-			return FALSE;
-		}
-		if(ctx->avail < 1U)
-		{
-			return FALSE;
+			if(ctx->avail > 0U)
+			{
+				break;
+			}
+			else if(GetFileType(ctx->handle_in) != FILE_TYPE_PIPE)
+			{
+				return FALSE;
+			}
 		}
 	}
 	*output = ctx->buffer[ctx->pos++];
