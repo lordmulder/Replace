@@ -257,12 +257,13 @@ static BOOL has_readonly_attribute(const HANDLE handle)
 
 static BOOL clear_readonly_attribute(const WCHAR *const path)
 {
-	const DWORD attribs = GetFileAttributesW(path);
+	DWORD attribs = GetFileAttributesW(path);
 	if(attribs != INVALID_FILE_ATTRIBUTES)
 	{
 		if(attribs & FILE_ATTRIBUTE_READONLY)
 		{
-			return SetFileAttributesW(path, (attribs == FILE_ATTRIBUTE_READONLY) ? FILE_ATTRIBUTE_NORMAL : (attribs & (~FILE_ATTRIBUTE_READONLY)));
+			attribs &= (~FILE_ATTRIBUTE_READONLY);
+			return SetFileAttributesW(path, attribs ? attribs : FILE_ATTRIBUTE_NORMAL);
 		}
 		else
 		{

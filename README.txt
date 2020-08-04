@@ -1,4 +1,4 @@
-Replace v1.4.1 [Aug  3 2020], by LoRd_MuldeR <MuldeR2@GMX.de>
+Replace, by LoRd_MuldeR <MuldeR2@GMX.de>
 
 Replaces any occurrence of '<needle>' in '<input_file>' with '<replacement>'.
 The modified contents are then written to '<output_file>'.

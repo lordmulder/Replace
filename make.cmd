@@ -31,7 +31,7 @@ REM ///////////////////////////////////////////////////////////////////////////
 set "MSBuildUseNoSolutionCache=1"
 
 for %%p in (Win32,x64) do (
-	for %%c in (Release,Debug) do (
+	for %%c in (Release,Release_SSE2,Debug) do (
 		MSBuild /property:Platform=%%p /property:Configuration=%%c /target:Clean   "%~dp0\replace.sln"
 		if not "!ERRORLEVEL!"=="0" goto:BuildHasFailed
 		MSBuild /property:Platform=%%p /property:Configuration=%%c /target:Rebuild "%~dp0\replace.sln"
