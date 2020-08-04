@@ -3,9 +3,11 @@
 *.sdf
 *.suo
 *.user
+/**/ipch
 /bin
+/etc/fastrand/bin
+/etc/fastrand/obj
 /etc/test-cases/**/*.txt
 /etc/test-cases/out
-/ipch
 /obj
 /out
