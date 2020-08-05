@@ -494,6 +494,7 @@ static __inline BOOL memory_write_byte(const WORD input, const DWORD_PTR output,
 typedef struct file_input_t
 { 
 	HANDLE handle_in;
+	BOOL pipe;
 	DWORD avail;
 	DWORD pos;
 	BYTE buffer[IO_BUFF_SIZE];
@@ -514,6 +515,7 @@ static file_input_t *alloc_file_input(const HANDLE handle)
 	if(ctx)
 	{
 		ctx->handle_in = handle;
+		ctx->pipe = (GetFileType(ctx->handle_in) == FILE_TYPE_PIPE);
 		ctx->avail = ctx->pos = 0U;
 	}
 	return ctx;
@@ -541,9 +543,9 @@ static __inline BOOL file_read_byte(BYTE *const output, const DWORD_PTR input, B
 			if(!ReadFile(ctx->handle_in, ctx->buffer, IO_BUFF_SIZE, &ctx->avail, NULL))
 			{
 				const DWORD error_code = GetLastError();
-				if(error_code == ERROR_NO_DATA)
+				if(ctx->pipe && (error_code == ERROR_NO_DATA))
 				{
-					Sleep(0U); /*wait a little before retry*/
+					Sleep(0U); /*wait before retry*/
 					continue;
 				}
 				else
@@ -559,7 +561,7 @@ static __inline BOOL file_read_byte(BYTE *const output, const DWORD_PTR input, B
 			{
 				break;
 			}
-			else if(GetFileType(ctx->handle_in) != FILE_TYPE_PIPE)
+			if(!ctx->pipe)
 			{
 				return FALSE;
 			}
@@ -578,6 +580,7 @@ static __inline BOOL file_write_byte(const WORD input, const DWORD_PTR output, c
 	}
 	if((ctx->pos >= IO_BUFF_SIZE) || (input == LIBREPLACE_FLUSH))
 	{
+		BOOL fail_flag = FALSE;
 		DWORD bytes_written = 0U, offset = 0U;
 		while(offset < ctx->pos)
 		{
@@ -587,9 +590,18 @@ static __inline BOOL file_write_byte(const WORD input, const DWORD_PTR output, c
 			}
 			if(bytes_written < 1U)
 			{
-				return FALSE;
+				if(!fail_flag)
+				{
+					fail_flag = TRUE;
+					continue;
+				}
+				else
+				{
+					return FALSE;
+				}
 			}
 			offset += bytes_written;
+			fail_flag = FALSE;
 		}
 		if(sync)
 		{
