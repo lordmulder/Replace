@@ -504,6 +504,7 @@ file_input_t;
 typedef struct file_output_t
 { 
 	HANDLE handle_out;
+	BOOL pipe;
 	DWORD pos;
 	BYTE buffer[IO_BUFF_SIZE];
 }
@@ -527,6 +528,7 @@ static file_output_t *alloc_file_output(const HANDLE handle)
 	if(ctx)
 	{
 		ctx->handle_out = handle;
+		ctx->pipe = (GetFileType(ctx->handle_out) == FILE_TYPE_PIPE);
 		ctx->pos = 0U;
 	}
 	return ctx;
@@ -537,33 +539,32 @@ static __inline BOOL file_read_byte(BYTE *const output, const DWORD_PTR input, B
 	file_input_t *const ctx = (file_input_t*) input;
 	if(ctx->pos >= ctx->avail)
 	{
-		ctx->pos = ctx->avail = 0U;
+		DWORD sleep_timeout = ctx->pos = ctx->avail = 0U;
 		for(;;)
 		{
-			if(!ReadFile(ctx->handle_in, ctx->buffer, IO_BUFF_SIZE, &ctx->avail, NULL))
+			if(ReadFile(ctx->handle_in, ctx->buffer, IO_BUFF_SIZE, &ctx->avail, NULL))
 			{
-				const DWORD error_code = GetLastError();
-				if(ctx->pipe && (error_code == ERROR_NO_DATA))
+				if(ctx->avail > 0U)
 				{
-					Sleep(0U); /*wait before retry*/
-					continue;
+					break; /*success*/
 				}
-				else
+				else if(!ctx->pipe)
 				{
-					if((error_code != ERROR_HANDLE_EOF) && (error_code != ERROR_BROKEN_PIPE))
-					{
-						*error_flag = TRUE;
-					}
-					return FALSE;
+					return 0U; /*EOF*/
 				}
 			}
-			if(ctx->avail > 0U)
+			else
 			{
-				break;
+				const DWORD error = GetLastError();
+				if((!ctx->pipe) || (error != ERROR_NO_DATA))
+				{
+					*error_flag = TRUE;
+					return 0U; /*failed*/
+				}
 			}
-			if(!ctx->pipe)
+			if(sleep_timeout++)
 			{
-				return FALSE;
+				Sleep(sleep_timeout >> 8);
 			}
 		}
 	}
@@ -580,28 +581,24 @@ static __inline BOOL file_write_byte(const WORD input, const DWORD_PTR output, c
 	}
 	if((ctx->pos >= IO_BUFF_SIZE) || (input == LIBREPLACE_FLUSH))
 	{
-		BOOL fail_flag = FALSE;
-		DWORD bytes_written = 0U, offset = 0U;
-		while(offset < ctx->pos)
+		DWORD offset, bytes_written = 0U, sleep_timeout = 0U;
+		for(offset = 0U; offset < ctx->pos; offset += bytes_written)
 		{
 			if(!WriteFile(ctx->handle_out, ctx->buffer + offset, ctx->pos - offset, &bytes_written, NULL))
 			{
-				return FALSE;
+				return FALSE; /*failed*/
 			}
 			if(bytes_written < 1U)
 			{
-				if(!fail_flag)
+				if(!ctx->pipe)
 				{
-					fail_flag = TRUE;
-					continue;
+					return FALSE; /*failed*/
 				}
-				else
+				if(sleep_timeout++)
 				{
-					return FALSE;
+					Sleep(sleep_timeout >> 8);
 				}
 			}
-			offset += bytes_written;
-			fail_flag = FALSE;
 		}
 		if(sync)
 		{
