@@ -562,6 +562,10 @@ static __inline BOOL file_read_byte(BYTE *const output, const DWORD_PTR input, B
 					return 0U; /*failed*/
 				}
 			}
+			if(g_abort_requested)
+			{
+				return 0U; /*aborted*/
+			}
 			if(sleep_timeout++)
 			{
 				Sleep(sleep_timeout >> 8);
@@ -593,6 +597,10 @@ static __inline BOOL file_write_byte(const WORD input, const DWORD_PTR output, c
 				if(!ctx->pipe)
 				{
 					return FALSE; /*failed*/
+				}
+				if(g_abort_requested)
+				{
+					return 0U; /*aborted*/
 				}
 				if(sleep_timeout++)
 				{
