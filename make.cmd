@@ -42,15 +42,20 @@ for %%p in (Win32,x64) do (
 
 echo.
 echo BUILD COMPLETED.
-pause
-goto:eof
+echo.
+
+if not "%MAKE_NONINTERACTIVE%"=="1" pause
+exit /B 0
 
 REM ///////////////////////////////////////////////////////////////////////////
 REM // Failed
 REM ///////////////////////////////////////////////////////////////////////////
 
 :BuildHasFailed
+
 echo.
 echo BUILD HAS FAILED ^^!^^!^^!
-pause
-goto:eof
+echo.
+
+if not "%MAKE_NONINTERACTIVE%"=="1" pause
+exit /B 1
