@@ -64,7 +64,7 @@ static BOOL run_test(const HANDLE log_output, const CHAR *const needle, const CH
 	
 	if(output_context->flushed == expected_len)
 	{
-		success = (CompareStringA(LOCALE_INVARIANT, 0, (const CHAR*)output_context->buffer, output_context->flushed, expected, lstrlenA(expected)) == CSTR_EQUAL);
+		success = (lstrcmpA((LPCSTR)output_context->buffer, expected) == 0L);
 	}
 
 cleanup:
