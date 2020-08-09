@@ -550,7 +550,7 @@ static __inline BOOL file_read_byte(BYTE *const output, const DWORD_PTR input, B
 				}
 				else if(!ctx->pipe)
 				{
-					return 0U; /*EOF*/
+					return FALSE; /*EOF*/
 				}
 			}
 			else
@@ -559,12 +559,13 @@ static __inline BOOL file_read_byte(BYTE *const output, const DWORD_PTR input, B
 				if((!ctx->pipe) || (error != ERROR_NO_DATA))
 				{
 					*error_flag = TRUE;
-					return 0U; /*failed*/
+					return FALSE; /*failed*/
 				}
 			}
 			if(g_abort_requested)
 			{
-				return 0U; /*aborted*/
+				*error_flag = TRUE;
+				return FALSE; /*aborted*/
 			}
 			if(sleep_timeout++)
 			{
@@ -600,7 +601,7 @@ static __inline BOOL file_write_byte(const WORD input, const DWORD_PTR output, c
 				}
 				if(g_abort_requested)
 				{
-					return 0U; /*aborted*/
+					return FALSE; /*aborted*/
 				}
 				if(sleep_timeout++)
 				{
