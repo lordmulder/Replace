@@ -31,6 +31,11 @@ for %%p in (Win32,x64) do (
 	"!EXE_PATH!" "@@ICO_PATH@@" "C:\texlive\2017\tlpkg\tlpsv\psv.ico"                          "out\%%~p\output-1i.txt"
 	"!EXE_PATH!" "ababcabab"    "Lorem ipsum dolor sit amet, consectetur adipisici elit sed^!" "out\%%~p\output-1i.txt"
 
+	"..\utils\win32\mkpipe.exe" "!EXE_PATH!" "@@JAR_PATH@@" "C:\Windows\System32\drivers\tcpip.sys" "|" ^
+		"..\utils\win32\pv.exe" "<" "src\input-1.txt" ">" out\%%~p\output-1j.txt"
+	"..\utils\win32\mkpipe.exe" "!EXE_PATH!" "@JAR_PATH@"   "C:\Windows\System32\drivers\tcpip.sys" "|" ^
+		"..\utils\win32\pv.exe" "<" "src\input-1.txt" ">" out\%%~p\output-1k.txt"
+
 	"!EXE_PATH!"    "Cheshire Cat" "White Rabbit" "src\input-2.txt" "out\%%~p\output-2a.txt"
 	"!EXE_PATH!" -s "Cheshire Cat" "White Rabbit" "src\input-2.txt" "out\%%~p\output-2b.txt"
 
