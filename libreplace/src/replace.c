@@ -21,14 +21,15 @@
 { \
 	if(*abort_flag) \
 	{ \
-		libreplace_print(logger, "Process cancelled by user --> aborting!\n"); \
+		libreplace_print(logger, ABORTING_MESSAGE); \
 		goto finished; \
 	} \
 } \
 while(0)
 
-static const char *const WR_ERROR_MESSAGE = "Write operation failed -> aborting!\n";
-static const char *const RD_ERROR_MESSAGE = "Read operation failed -> aborting!\n";
+static const CHAR *const WR_ERROR_MESSAGE = "Write operation failed -> aborting!\n";
+static const CHAR *const RD_ERROR_MESSAGE = "Read operation failed -> aborting!\n";
+static const CHAR *const ABORTING_MESSAGE = "Process cancelled by user --> aborting!\n";
 
 /* ======================================================================= */
 /* Helper Functions                                                        */

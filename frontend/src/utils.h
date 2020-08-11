@@ -311,7 +311,7 @@ static const HANDLE open_file(const WCHAR *const file_name, const BOOL write_mod
 {
 	HANDLE handle = INVALID_HANDLE_VALUE;
 	DWORD retry;
-	for(retry = 0U; retry < 32U; ++retry)
+	for(retry = 0U; (retry < 32U) && (!g_abort_requested); ++retry)
 	{
 		if(retry > 0U)
 		{
@@ -372,7 +372,7 @@ static const WCHAR *generate_temp_file(const WCHAR *const directory, HANDLE *con
 static const BOOL move_file(const WCHAR *const file_src, const WCHAR *const file_dst)
 {
 	DWORD retry;
-	for(retry = 0U; retry < 128U; ++retry)
+	for(retry = 0U; (retry < 128U) && (!g_abort_requested); ++retry)
 	{
 		if(retry > 0U)
 		{
@@ -389,7 +389,7 @@ static const BOOL move_file(const WCHAR *const file_src, const WCHAR *const file
 static const BOOL delete_file(const WCHAR *const file_path)
 {
 	DWORD retry;
-	for(retry = 0U; retry < 128; ++retry)
+	for(retry = 0U; (retry < 128U) && ((retry < 2U) || (!g_abort_requested)); ++retry)
 	{
 		if(retry > 0U)
 		{

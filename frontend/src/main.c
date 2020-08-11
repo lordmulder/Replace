@@ -13,6 +13,19 @@
 
 #include <ShellAPI.h> /*CommandLineToArgvW*/
 
+#define CHECK_ABORT_REQUEST() do \
+{ \
+	if(g_abort_requested) \
+	{ \
+		result = 130U; \
+		print_text(std_err, ABORTED_MESSAGE); \
+		goto cleanup; \
+	} \
+} \
+while(0)
+
+static const CHAR *const ABORTED_MESSAGE = "Process was aborted.\n";
+
 /* ======================================================================= */
 /* Manpage                                                                 */
 /* ======================================================================= */
@@ -142,11 +155,10 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 /* Main                                                                    */
 /* ======================================================================= */
 
-const CHAR *const ABORTED_MESSAGE = "Process was aborted.\n";
-
-static int _main(const int argc, const LPWSTR *const argv)
+static UINT _main(const int argc, const LPWSTR *const argv)
 {
-	int result = 1, param_offset = 1;
+	UINT result = 1U, previous_output_cp = 0U;
+	int param_offset = 1;
 	BYTE *needle = NULL, *replacement = NULL;
 	options_t options;
 	HANDLE std_in = GetStdHandle(STD_INPUT_HANDLE), std_out = GetStdHandle(STD_OUTPUT_HANDLE), std_err = GetStdHandle(STD_ERROR_HANDLE);
@@ -155,7 +167,6 @@ static int _main(const int argc, const LPWSTR *const argv)
 	libreplace_io_t io_functions;
 	file_input_t *file_input_context = NULL;
 	file_output_t *file_output_context = NULL;
-	UINT previous_output_cp = 0U;
 	LONG needle_len = 0L, replacement_len = 0L;
 	const WCHAR *source_file = NULL, *output_file = NULL, *temp_path = NULL, *temp_file = NULL;
 
@@ -171,7 +182,7 @@ static int _main(const int argc, const LPWSTR *const argv)
 	if(options.show_help)
 	{
 		print_manpage(std_err);
-		result = 0;
+		result = 0U;
 		goto cleanup;
 	}
 
@@ -230,11 +241,12 @@ static int _main(const int argc, const LPWSTR *const argv)
 		print_text(std_err, "Running self-test...\n");
 		if(!self_test(std_err))
 		{
-			print_text(std_err, g_abort_requested ? ABORTED_MESSAGE : "Error: Self-test failed!\n");
+			CHECK_ABORT_REQUEST();
+			print_text(std_err, "Error: Self-test failed!\n");
 			goto cleanup;
 		}
 		print_text(std_err, "Self-test completed.\n");
-		result = 0;
+		result = 0U;
 		goto cleanup;
 	}
 
@@ -296,6 +308,7 @@ static int _main(const int argc, const LPWSTR *const argv)
 
 	if(input == INVALID_HANDLE_VALUE)
 	{
+		CHECK_ABORT_REQUEST();
 		print_text(std_err, "Error: Failed to open input file for reading!\n");
 		goto cleanup;
 	}
@@ -320,7 +333,8 @@ static int _main(const int argc, const LPWSTR *const argv)
 		temp_file = generate_temp_file(temp_path = get_directory_part(source_file), &output);
 		if(EMPTY(temp_file))
 		{
-			print_text(std_err, g_abort_requested ? ABORTED_MESSAGE : "Error: Failed to create temporary file!\n");
+			CHECK_ABORT_REQUEST();
+			print_text(std_err, "Error: Failed to create temporary file!\n");
 			goto cleanup;
 		}
 	}
@@ -347,6 +361,7 @@ static int _main(const int argc, const LPWSTR *const argv)
 
 	if(output == INVALID_HANDLE_VALUE)
 	{
+		CHECK_ABORT_REQUEST();
 		print_text(std_err, "Error: Failed to open output file for writing!\n");
 		goto cleanup;
 	}
@@ -380,17 +395,16 @@ static int _main(const int argc, const LPWSTR *const argv)
 	init_logging_functions(&logger, print_text_ptr, (DWORD_PTR)std_err);
 	init_io_functions(&io_functions, file_read_byte, file_write_byte, (DWORD_PTR)file_input_context, (DWORD_PTR)file_output_context);
 
+	CHECK_ABORT_REQUEST();
+
 	if(!libreplace_search_and_replace(&io_functions, &logger, needle, needle_len, replacement, replacement_len, &options.flags, &g_abort_requested))
 	{
-		print_text(std_err, g_abort_requested ? ABORTED_MESSAGE : "Error: Something went wrong. Output probably is incomplete!\n");
+		CHECK_ABORT_REQUEST();
+		print_text(std_err, "Error: Something went wrong. Output probably is incomplete!\n");
 		goto cleanup;
 	}
 
-	if(g_abort_requested)
-	{
-		print_text(std_err, ABORTED_MESSAGE);
-		goto cleanup;
-	}
+	CHECK_ABORT_REQUEST();
 
 	/* -------------------------------------------------------- */
 	/* Finishing touch                                          */
@@ -416,12 +430,13 @@ static int _main(const int argc, const LPWSTR *const argv)
 		}
 		if(!move_file(temp_file, source_file))
 		{
+			CHECK_ABORT_REQUEST();
 			print_text(std_err, "Error: Failed to replace the original file with modified one!\n");
 			goto cleanup;
 		}
 	}
 
-	result = 0;
+	result = 0U;
 
 	/* -------------------------------------------------------- */
 	/* Final clean-up                                           */
