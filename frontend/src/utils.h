@@ -631,6 +631,20 @@ static __inline BOOL print_text(const HANDLE output, const CHAR *const text)
 	return TRUE;
 }
 
+static __inline BOOL print_text_fmt(const HANDLE output, const CHAR *const format, ...)
+{
+	CHAR temp[256U];
+	BOOL result = FALSE;
+	va_list ap;
+	va_start(ap, format);
+	if(wvsprintfA(temp, format, ap) > 0L)
+	{
+		result = print_text(output, temp);
+	}
+	va_end(ap);
+	return result;
+}
+
 static __inline BOOL print_text_ptr(const DWORD_PTR context, const CHAR *const text)
 {
 	return print_text((HANDLE)context, text);

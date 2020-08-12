@@ -118,7 +118,7 @@ static __inline BOOL libreplace_print_fmt(const libreplace_logger_t *const logge
 		BOOL result = FALSE;
 		va_list ap;
 		va_start(ap, format);
-		if(wvsprintfA(temp, format, ap))
+		if(wvsprintfA(temp, format, ap) > 0L)
 		{
 			result = logger->logging_func(logger->context, temp);
 		}
