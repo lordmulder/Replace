@@ -22,7 +22,7 @@
 #define LIBREPLACE_FLUSH ((WORD)-1)
 
 typedef BOOL (*libreplace_rd_func_t)(BYTE *const data, const DWORD_PTR context, BOOL *const error_flag);
-typedef BOOL (*libreplace_wr_func_t)(const WORD data, const DWORD_PTR context, const BOOL sync);
+typedef BOOL (*libreplace_wr_func_t)(const WORD data, const DWORD_PTR context);
 
 typedef struct libreplace_io_t
 {
@@ -48,7 +48,6 @@ typedef struct libreplace_flags_t
 	BOOL replace_once;
 	BOOL dry_run;
 	BOOL verbose;
-	BOOL force_sync;
 }
 libreplace_flags_t;
 

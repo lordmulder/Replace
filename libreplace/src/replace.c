@@ -140,12 +140,12 @@ static __inline BOOL libreplace_compare(const BYTE char_a, const BYTE char_b, co
 	return ignore_case ? (TO_UPPER(char_a) == TO_UPPER(char_b)) : (char_a == char_b);
 }
 
-static __inline BOOL libreplace_write(const BYTE *const data, const DWORD data_len, const libreplace_io_t *const io_functions, const BOOL sync)
+static __inline BOOL libreplace_write(const BYTE *const data, const DWORD data_len, const libreplace_io_t *const io_functions)
 {
 	DWORD pos;
 	for(pos = 0U; pos < data_len; ++pos)
 	{
-		if(!io_functions->func_wr(data[pos], io_functions->context_wr, sync))
+		if(!io_functions->func_wr(data[pos], io_functions->context_wr))
 		{
 			return FALSE;
 		}
@@ -153,7 +153,7 @@ static __inline BOOL libreplace_write(const BYTE *const data, const DWORD data_l
 	return TRUE;
 }
 
-static __inline BOOL libreplace_flush(ringbuffer_t *const ringbuffer, const LONG limit, const libreplace_io_t *const io_functions, const BOOL sync)
+static __inline BOOL libreplace_flush(ringbuffer_t *const ringbuffer, const LONG limit, const libreplace_io_t *const io_functions)
 {
 	BYTE char_output;
 	while (ringbuffer->used > limit)
@@ -162,7 +162,7 @@ static __inline BOOL libreplace_flush(ringbuffer_t *const ringbuffer, const LONG
 		{
 			FatalExit(-1); /*insanity*/
 		}
-		if(!io_functions->func_wr(char_output, io_functions->context_wr, sync))
+		if(!io_functions->func_wr(char_output, io_functions->context_wr))
 		{
 			return FALSE;
 		}
@@ -253,8 +253,8 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 		/* dump the updated status */
 		LIBREPLACE_TRACE(logger, "needle_pos[new]: %ld\n", needle_pos);
 
-		/* flush any data *before* start of the current prefix*/
-		if(!libreplace_flush(ringbuffer, ++needle_pos, io_functions, options->force_sync))
+		/* flush any data *before* start of current prefix*/
+		if(!libreplace_flush(ringbuffer, ++needle_pos, io_functions))
 		{
 			libreplace_print(logger, WR_ERROR_MESSAGE);
 			goto finished;
@@ -272,7 +272,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 			}
 			if(!options->dry_run)
 			{
-				if(!libreplace_write(replacement,replacement_len, io_functions, options->force_sync))
+				if(!libreplace_write(replacement,replacement_len, io_functions))
 				{
 					libreplace_print(logger, WR_ERROR_MESSAGE);
 					goto finished;
@@ -281,7 +281,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 			}
 			else
 			{
-				if(!libreplace_flush(ringbuffer, 0U, io_functions, options->force_sync))
+				if(!libreplace_flush(ringbuffer, 0U, io_functions))
 				{
 					libreplace_print(logger, WR_ERROR_MESSAGE);
 					goto finished;
@@ -305,7 +305,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 	LIBREPLACE_TRACE(logger, "needle_pos[fin]: %ld\n", needle_pos);
 
 	/* write any pending data */
-	if(!libreplace_flush(ringbuffer, 0U, io_functions, options->force_sync))
+	if(!libreplace_flush(ringbuffer, 0U, io_functions))
 	{
 		libreplace_print(logger, WR_ERROR_MESSAGE);
 		goto finished;
@@ -319,7 +319,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 	{
 		while(io_functions->func_rd(&char_input, io_functions->context_rd, &error_flag))
 		{
-			if(!io_functions->func_wr(char_input, io_functions->context_wr, options->force_sync))
+			if(!io_functions->func_wr(char_input, io_functions->context_wr))
 			{
 				libreplace_print(logger, WR_ERROR_MESSAGE);
 				goto finished;
@@ -338,7 +338,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 	}
 
 	/* flush output buffers*/
-	success = io_functions->func_wr(LIBREPLACE_FLUSH, io_functions->context_wr, options->force_sync);
+	success = io_functions->func_wr(LIBREPLACE_FLUSH, io_functions->context_wr);
 
 	if(options->verbose)
 	{

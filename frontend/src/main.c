@@ -121,7 +121,7 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 					options->escpae_chars = TRUE;
 					break;
 				case L'f':
-					options->flags.force_sync = TRUE;
+					options->force_sync = TRUE;
 					break;
 				case L'i':
 					options->flags.case_insensitive = TRUE;
@@ -165,7 +165,6 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 	int param_offset = 1;
 	BYTE *needle = NULL, *replacement = NULL;
 	options_t options;
-	HANDLE std_in = GetStdHandle(STD_INPUT_HANDLE), std_out = GetStdHandle(STD_OUTPUT_HANDLE), std_err = GetStdHandle(STD_ERROR_HANDLE);
 	HANDLE input = INVALID_HANDLE_VALUE, output = INVALID_HANDLE_VALUE;
 	libreplace_logger_t logger;
 	libreplace_io_t io_functions;
@@ -173,6 +172,14 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 	file_output_t *file_output_context = NULL;
 	LONG needle_len = 0L, replacement_len = 0L;
 	const WCHAR *source_file = NULL, *output_file = NULL, *temp_path = NULL, *temp_file = NULL;
+
+	/* -------------------------------------------------------- */
+	/* Init standard handles                                    */
+	/* -------------------------------------------------------- */
+
+	const HANDLE std_inp = GetStdHandle(STD_INPUT_HANDLE);
+	const HANDLE std_out = GetStdHandle(STD_OUTPUT_HANDLE);
+	const HANDLE std_err = GetStdHandle(STD_ERROR_HANDLE);
 
 	/* -------------------------------------------------------- */
 	/* Parse options                                            */
@@ -307,7 +314,7 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 		{
 			print_text(std_err, "Reading input from STDIN stream.\n");
 		}
-		input = std_in;
+		input = std_inp;
 	}
 
 	if(input == INVALID_HANDLE_VALUE)
@@ -370,7 +377,7 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 		goto cleanup;
 	}
 
-	if(!(file_output_context = alloc_file_output(output)))
+	if(!(file_output_context = alloc_file_output(output, options.force_sync)))
 	{
 		print_text(std_err, "Error: Failed to allocate file output context!\n");
 		goto cleanup;
@@ -414,7 +421,7 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 	/* Finishing touch                                          */
 	/* -------------------------------------------------------- */
 
-	if(input != std_in)
+	if(input != std_inp)
 	{
 		CloseHandle(input);
 		input = INVALID_HANDLE_VALUE;
@@ -448,7 +455,7 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 
 cleanup:
 
-	if((input != INVALID_HANDLE_VALUE) && (input != std_in))
+	if((input != INVALID_HANDLE_VALUE) && (input != std_inp))
 	{
 		CloseHandle(input);
 	}

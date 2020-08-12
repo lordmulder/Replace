@@ -20,6 +20,7 @@ typedef struct options_t
 	BOOL ansi_cp;
 	BOOL escpae_chars;
 	BOOL binary_mode;
+	BOOL force_sync;
 	BOOL force_overwrite;
 	BOOL self_test;
 }
@@ -414,9 +415,6 @@ static const BOOL delete_file(const WCHAR *const file_path)
 /* Memory I/O Routines                                                     */
 /* ======================================================================= */
 
-#pragma warning(push)
-#pragma warning(disable: 4100)
-
 typedef struct memory_input_t
 { 
 	const BYTE *data_in;
@@ -461,10 +459,11 @@ static __inline BOOL memory_read_byte(BYTE *const output, const DWORD_PTR input,
 		*output = ctx->data_in[ctx->pos++];
 		return TRUE;
 	}
+	UNREFERENCED_PARAMETER(error_flag);
 	return FALSE;
 }
 
-static __inline BOOL memory_write_byte(const WORD input, const DWORD_PTR output, const BOOL sync)
+static __inline BOOL memory_write_byte(const WORD input, const DWORD_PTR output)
 {
 	memory_output_t *const ctx = (memory_output_t*) output;
 	if(input != LIBREPLACE_FLUSH)
@@ -482,8 +481,6 @@ static __inline BOOL memory_write_byte(const WORD input, const DWORD_PTR output,
 		return TRUE;
 	}
 }
-
-#pragma warning(pop)
 
 /* ======================================================================= */
 /* File I/O Routines                                                       */
@@ -505,6 +502,7 @@ typedef struct file_output_t
 { 
 	HANDLE handle_out;
 	BOOL pipe;
+	BOOL force_sync;
 	DWORD pos;
 	BYTE buffer[IO_BUFF_SIZE];
 }
@@ -522,13 +520,14 @@ static file_input_t *alloc_file_input(const HANDLE handle)
 	return ctx;
 }
 
-static file_output_t *alloc_file_output(const HANDLE handle)
+static file_output_t *alloc_file_output(const HANDLE handle, const BOOL force_sync)
 {
 	file_output_t *const ctx = (file_output_t*) LocalAlloc(LPTR, sizeof(file_output_t));
 	if(ctx)
 	{
 		ctx->handle_out = handle;
 		ctx->pipe = (GetFileType(ctx->handle_out) == FILE_TYPE_PIPE);
+		ctx->force_sync = force_sync;
 		ctx->pos = 0U;
 	}
 	return ctx;
@@ -577,7 +576,7 @@ static __inline BOOL file_read_byte(BYTE *const output, const DWORD_PTR input, B
 	return TRUE;
 }
 
-static __inline BOOL file_write_byte(const WORD input, const DWORD_PTR output, const BOOL sync)
+static __inline BOOL file_write_byte(const WORD input, const DWORD_PTR output)
 {
 	file_output_t *const ctx = (file_output_t*) output;
 	if(input != LIBREPLACE_FLUSH)
@@ -609,7 +608,7 @@ static __inline BOOL file_write_byte(const WORD input, const DWORD_PTR output, c
 				}
 			}
 		}
-		if(sync)
+		if(ctx->force_sync)
 		{
 			FlushFileBuffers(ctx->handle_out);
 		}
