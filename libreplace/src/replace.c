@@ -128,13 +128,6 @@ static __inline BOOL libreplace_print_fmt(const libreplace_logger_t *const logge
 	return TRUE;
 }
 
-static __inline ULARGE_INTEGER libreplace_uint64(const ULONGLONG value)
-{
-	ULARGE_INTEGER result;
-	result.QuadPart = value;
-	return result;
-}
-
 static __inline BOOL libreplace_compare(const BYTE char_a, const BYTE char_b, const BOOL ignore_case)
 {
 	return ignore_case ? (TO_UPPER(char_a) == TO_UPPER(char_b)) : (char_a == char_b);
@@ -211,7 +204,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 	BYTE char_input;
 	LONG *prefix = NULL, needle_pos = 0L;
 	DWORD replacement_count = 0U;
-	ULARGE_INTEGER position = { 0U, 0U };
+	ULARGE_INTEGER position = { 0U, 0U }, match_start = { 0U, 0U };
 	ringbuffer_t *ringbuffer = NULL;
 
 	/* allocate temp buffer */
@@ -267,7 +260,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 			needle_pos = 0U;
 			if(options->verbose || options->dry_run)
 			{
-				const ULARGE_INTEGER match_start = libreplace_uint64(position.QuadPart - needle_len);
+				match_start.QuadPart = position.QuadPart - needle_len;
 				libreplace_print_fmt(logger, options->dry_run ? "Found occurence at offset: 0x%08lX%08lX\n" : "Replaced occurence at offset: 0x%08lX%08lX\n", match_start.HighPart, match_start.LowPart);
 			}
 			if(!options->dry_run)

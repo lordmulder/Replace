@@ -108,20 +108,23 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 				switch(value[flag_pos])
 				{
 				case L'?':
-				case L'h':
-					options->show_help = TRUE;
-					break;
 				case L'a':
 					options->ansi_cp = TRUE;
 					break;
 				case L'b':
 					options->binary_mode = TRUE;
 					break;
+				case L'd':
+					options->flags.dry_run = TRUE;
+					break;
 				case L'e':
 					options->escpae_chars = TRUE;
 					break;
 				case L'f':
 					options->force_sync = TRUE;
+					break;
+				case L'h':
+					options->show_help = TRUE;
 					break;
 				case L'i':
 					options->flags.case_insensitive = TRUE;
@@ -131,9 +134,6 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 					break;
 				case L't':
 					options->self_test = TRUE;
-					break;
-				case L'd':
-					options->flags.dry_run = TRUE;
 					break;
 				case L'v':
 					options->flags.verbose = TRUE;

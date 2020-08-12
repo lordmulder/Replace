@@ -1,4 +1,5 @@
 #!/bin/bash
+cd "$(dirname "${BASH_SOURCE[0]}")"
 
 while true; do
 	len_pattern=$((($RANDOM % 12) + 4))
