@@ -15,13 +15,13 @@
 /* CLI options*/
 typedef struct options_t
 { 
+	libreplace_flags_t flags;
 	BOOL show_help;
 	BOOL ansi_cp;
 	BOOL escpae_chars;
 	BOOL binary_mode;
 	BOOL force_overwrite;
 	BOOL self_test;
-	libreplace_flags_t flags;
 }
 options_t;
 

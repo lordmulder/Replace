@@ -49,6 +49,7 @@ static void print_manpage(const HANDLE std_err)
 	print_text(std_err, "  -f  Force immediate flushing of file buffers (may degrade performance)\n");
 	print_text(std_err, "  -b  Binary mode; parameters '<needle>' and '<replacement>' are Hex strings\n");
 	print_text(std_err, "  -y  Try to overwrite read-only files; i.e. clears the read-only flag\n");
+	print_text(std_err, "  -d  Dry run; do not actually replace occurrences of '<needle>'\n");
 	print_text(std_err, "  -v  Enable verbose mode; print additional diagnostic information to STDERR\n");
 	print_text(std_err, "  -t  Run self-test and exit\n");
 	print_text(std_err, "  -h  Display this help text and exit\n\n");
@@ -130,6 +131,9 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 					break;
 				case L't':
 					options->self_test = TRUE;
+					break;
+				case L'd':
+					options->flags.dry_run = TRUE;
 					break;
 				case L'v':
 					options->flags.verbose = TRUE;
@@ -422,7 +426,7 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 		output = INVALID_HANDLE_VALUE;
 	}
 
-	if(NOT_EMPTY(temp_file))
+	if(NOT_EMPTY(temp_file) && (!options.flags.dry_run))
 	{
 		if(options.force_overwrite)
 		{

@@ -17,6 +17,17 @@
 #define LIBREPLACE_TRACE(OUT, FMT, ...) __noop()
 #endif
 
+#define TO_UPPER(C) ((((C) >= 0x61) && ((C) <= 0x7A)) ? ((C) - 0x20) : (C))
+
+#define INCREMENT(VALUE, LIMIT) do \
+{ \
+	if(++(VALUE) >= (LIMIT)) \
+	{ \
+		(VALUE) = 0U; \
+	} \
+} \
+while (0)
+
 #define CHECK_ABORT_REQUEST() do \
 { \
 	if(*abort_flag) \
@@ -32,7 +43,66 @@ static const CHAR *const RD_ERROR_MESSAGE = "Read operation failed -> aborting!\
 static const CHAR *const ABORTING_MESSAGE = "Process cancelled by user --> aborting!\n";
 
 /* ======================================================================= */
-/* Helper Functions                                                        */
+/* Ring buffer                                                             */
+/* ======================================================================= */
+
+typedef struct ringbuffer_t
+{ 
+	LONG capacity;
+	LONG used;
+	LONG index_wr;
+	LONG index_rd;
+	BYTE buffer[];
+}
+ringbuffer_t;
+
+static ringbuffer_t *ringbuffer_alloc(const LONG size)
+{
+	if(size > 0L)
+	{
+		ringbuffer_t *const ringbuffer = (ringbuffer_t*) LocalAlloc(LPTR, sizeof(ringbuffer_t) + (sizeof(BYTE) * size));
+		if(ringbuffer)
+		{
+			ringbuffer->capacity = size;
+			ringbuffer->index_wr = ringbuffer->index_rd = ringbuffer->used = 0U;
+			return ringbuffer;
+		}
+	}
+	return NULL;
+}
+
+static __inline BOOL ringbuffer_put(const BYTE data, ringbuffer_t *const ringbuffer)
+{
+	if(ringbuffer->used < ringbuffer->capacity)
+	{
+		ringbuffer->buffer[ringbuffer->index_wr] = data;
+		++ringbuffer->used;
+		INCREMENT(ringbuffer->index_wr, ringbuffer->capacity);
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static __inline BOOL ringbuffer_get(BYTE *const data_out, ringbuffer_t *const ringbuffer)
+{
+	if(ringbuffer->used > 0U)
+	{
+		*data_out = ringbuffer->buffer[ringbuffer->index_rd];
+		--ringbuffer->used;
+		INCREMENT(ringbuffer->index_rd, ringbuffer->capacity);
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static __inline void ringbuffer_reset(ringbuffer_t *const ringbuffer)
+{
+	ringbuffer->index_wr = ringbuffer->index_rd = 0U;
+	ringbuffer->used = 0U;
+}
+
+/* ======================================================================= */
+/* Utility Functions                                                       */
 /* ======================================================================= */
 
 static __inline BOOL libreplace_print(const libreplace_logger_t *const logger, const CHAR *const text)
@@ -65,8 +135,6 @@ static __inline ULARGE_INTEGER libreplace_uint64(const ULONGLONG value)
 	return result;
 }
 
-#define TO_UPPER(C) ((((C) >= 0x61) && ((C) <= 0x7A)) ? ((C) - 0x20) : (C))
-
 static __inline BOOL libreplace_compare(const BYTE char_a, const BYTE char_b, const BOOL ignore_case)
 {
 	return ignore_case ? (TO_UPPER(char_a) == TO_UPPER(char_b)) : (char_a == char_b);
@@ -78,6 +146,23 @@ static __inline BOOL libreplace_write(const BYTE *const data, const DWORD data_l
 	for(pos = 0U; pos < data_len; ++pos)
 	{
 		if(!io_functions->func_wr(data[pos], io_functions->context_wr, sync))
+		{
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+
+static __inline BOOL libreplace_flush(ringbuffer_t *const ringbuffer, const LONG limit, const libreplace_io_t *const io_functions, const BOOL sync)
+{
+	BYTE char_output;
+	while (ringbuffer->used > limit)
+	{
+		if(!ringbuffer_get(&char_output, ringbuffer))
+		{
+			FatalExit(-1); /*insanity*/
+		}
+		if(!io_functions->func_wr(char_output, io_functions->context_wr, sync))
 		{
 			return FALSE;
 		}
@@ -127,6 +212,14 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 	LONG *prefix = NULL, needle_pos = 0L;
 	DWORD replacement_count = 0U;
 	ULARGE_INTEGER position = { 0U, 0U };
+	ringbuffer_t *ringbuffer = NULL;
+
+	/* allocate temp buffer */
+	ringbuffer = ringbuffer_alloc(needle_len);
+	if(!ringbuffer)
+	{
+		goto finished;
+	}
 
 	/* pre-compute prefixes */
 	prefix = libreplace_compute_prefixes(logger, needle, needle_len);
@@ -142,52 +235,57 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 		LIBREPLACE_TRACE(logger, "position: 0x%08lX%08lX\n", position.HighPart, position.LowPart);
 		LIBREPLACE_TRACE(logger, "needle_pos[old]: %ld\n", needle_pos);
 
-		/* update input byte counter */
+		/* add next character to buffer*/
 		++position.QuadPart;
+		if (!ringbuffer_put(char_input, ringbuffer))
+		{	
+			FatalExit(-1); /*insanity*/
+			goto finished;
+		}
 
 		/* if prefix cannot be extended, search for a shorter prefix */
 		while ((needle_pos >= 0L) && (!libreplace_compare(char_input, needle[needle_pos], options->case_insensitive)))
 		{
 			LIBREPLACE_TRACE(logger, "mismatch: %ld --> %ld\n", needle_pos, prefix[needle_pos]);
-			/* write discarded part of old prefix */
-			if((needle_pos > 0L) && (prefix[needle_pos] < needle_pos))
-			{
-				if(!libreplace_write(needle, needle_pos - prefix[needle_pos], io_functions, options->force_sync))
-				{
-					libreplace_print(logger, WR_ERROR_MESSAGE);
-					goto finished;
-				}
-			}
 			needle_pos = prefix[needle_pos];
-		}
-
-		/* write the input character, if it did *not* match */
-		if(needle_pos < 0L)
-		{
-			if(!io_functions->func_wr(char_input, io_functions->context_wr, options->force_sync))
-			{
-				libreplace_print(logger, WR_ERROR_MESSAGE);
-				goto finished;
-			}
 		}
 
 		/* dump the updated status */
 		LIBREPLACE_TRACE(logger, "needle_pos[new]: %ld\n", needle_pos);
 
+		/* flush any data *before* start of the current prefix*/
+		if(!libreplace_flush(ringbuffer, ++needle_pos, io_functions, options->force_sync))
+		{
+			libreplace_print(logger, WR_ERROR_MESSAGE);
+			goto finished;
+		}
+
 		/* if a full match has been found, write the replacement instead */
-		if (++needle_pos >= needle_len)
+		if (needle_pos >= needle_len)
 		{
 			++replacement_count;
 			needle_pos = 0U;
-			if(options->verbose)
+			if(options->verbose || options->dry_run)
 			{
 				const ULARGE_INTEGER match_start = libreplace_uint64(position.QuadPart - needle_len);
-				libreplace_print_fmt(logger, "Replaced occurence at offset: 0x%08lX%08lX\n", match_start.HighPart, match_start.LowPart);
+				libreplace_print_fmt(logger, options->dry_run ? "Found occurence at offset: 0x%08lX%08lX\n" : "Replaced occurence at offset: 0x%08lX%08lX\n", match_start.HighPart, match_start.LowPart);
 			}
-			if(!libreplace_write(replacement, replacement_len, io_functions, options->force_sync))
+			if(!options->dry_run)
 			{
-				libreplace_print(logger, WR_ERROR_MESSAGE);
-				goto finished;
+				if(!libreplace_write(replacement,replacement_len, io_functions, options->force_sync))
+				{
+					libreplace_print(logger, WR_ERROR_MESSAGE);
+					goto finished;
+				}
+				ringbuffer_reset(ringbuffer);
+			}
+			else
+			{
+				if(!libreplace_flush(ringbuffer, 0U, io_functions, options->force_sync))
+				{
+					libreplace_print(logger, WR_ERROR_MESSAGE);
+					goto finished;
+				}
 			}
 			if(options->replace_once)
 			{
@@ -199,7 +297,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 			}
 		}
 
-		/*check if abort was request*/
+		/*check if abort was requested*/
 		CHECK_ABORT_REQUEST();
 	}
 
@@ -207,16 +305,13 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 	LIBREPLACE_TRACE(logger, "needle_pos[fin]: %ld\n", needle_pos);
 
 	/* write any pending data */
-	if(needle_pos > 0L)
-	{	
-		if(!libreplace_write(needle, needle_pos, io_functions, options->force_sync))
-		{
-			libreplace_print(logger, WR_ERROR_MESSAGE);
-			goto finished;
-		}
+	if(!libreplace_flush(ringbuffer, 0U, io_functions, options->force_sync))
+	{
+		libreplace_print(logger, WR_ERROR_MESSAGE);
+		goto finished;
 	}
 
-	/*check if abort was request*/
+	/*check if abort was requested*/
 	CHECK_ABORT_REQUEST();
 
 	/* transfer any input data not processed yet */
@@ -232,7 +327,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 		}
 	}
 
-	/*check if abort was request*/
+	/*check if abort was requested*/
 	CHECK_ABORT_REQUEST();
 
 	/* check for any previous read errors */
@@ -247,7 +342,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 
 	if(options->verbose)
 	{
-		libreplace_print_fmt(logger, "Total occurences replaced: %lu\n", replacement_count);
+		libreplace_print_fmt(logger, options->dry_run ? "Total occurences found: %lu\n" : "Total occurences replaced: %lu\n", replacement_count);
 	}
 
 finished:
@@ -255,6 +350,11 @@ finished:
 	if(prefix)
 	{
 		LocalFree(prefix);
+	}
+
+	if(ringbuffer)
+	{
+		LocalFree(ringbuffer);
 	}
 
 	return success;

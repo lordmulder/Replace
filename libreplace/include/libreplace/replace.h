@@ -16,8 +16,8 @@
 #endif
 
 #define LIBREPLACE_VERSION_MAJOR 1
-#define LIBREPLACE_VERSION_MINOR 5
-#define LIBREPLACE_VERSION_PATCH 1
+#define LIBREPLACE_VERSION_MINOR 6
+#define LIBREPLACE_VERSION_PATCH 0
 
 #define LIBREPLACE_FLUSH ((WORD)-1)
 
@@ -46,6 +46,7 @@ typedef struct libreplace_flags_t
 { 
 	BOOL case_insensitive;
 	BOOL replace_once;
+	BOOL dry_run;
 	BOOL verbose;
 	BOOL force_sync;
 }
