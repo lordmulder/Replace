@@ -34,6 +34,10 @@ for %%p in (Win32,x64) do (
 	"..\utils\win32\pipe-utils\mkpipe.exe" "<" "src\input-1.txt" "!EXE_PATH!" "@@JAR_PATH@@" "C:\Windows\System32\drivers\tcpip.sys" ">" out\%%~p\output-1j.txt"
 	"..\utils\win32\pipe-utils\mkpipe.exe" "<" "src\input-1.txt" "!EXE_PATH!" "@JAR_PATH@"   "C:\Windows\System32\drivers\tcpip.sys" ">" out\%%~p\output-1k.txt"
 
+	"!EXE_PATH!"     "@jar_path@" "C:\Windows\System32\drivers\tcpip.sys" "src\input-1.txt" "out\%%~p\output-1l.txt"
+	"!EXE_PATH!" -i  "@jar_path@" "C:\Windows\System32\drivers\tcpip.sys" "src\input-1.txt" "out\%%~p\output-1m.txt"
+	"!EXE_PATH!" -id "@jar_path@" "C:\Windows\System32\drivers\tcpip.sys" "src\input-1.txt" "out\%%~p\output-1n.txt"
+
 	"!EXE_PATH!"    "Cheshire Cat" "White Rabbit" "src\input-2.txt" "out\%%~p\output-2a.txt"
 	"!EXE_PATH!" -s "Cheshire Cat" "White Rabbit" "src\input-2.txt" "out\%%~p\output-2b.txt"
 
