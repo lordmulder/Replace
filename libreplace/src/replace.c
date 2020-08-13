@@ -167,7 +167,7 @@ static __inline BOOL libreplace_flush(ringbuffer_t *const ringbuffer, const LONG
 /* Search & Replace                                                        */
 /* ======================================================================= */
 
-static LONG *libreplace_compute_prefixes(const libreplace_logger_t *const logger, const BYTE *const needle, const LONG needle_len)
+static LONG *libreplace_compute_prefixes(const libreplace_logger_t *const logger, const BYTE *const needle, const LONG needle_len, const BOOL ignore_case)
 {
 	LONG *prefix, needle_pos = 0L, prefix_len = -1L;
 	if(!(prefix = (LONG*) LocalAlloc(LPTR, sizeof(LONG) * (needle_len + 1L))))
@@ -178,7 +178,7 @@ static LONG *libreplace_compute_prefixes(const libreplace_logger_t *const logger
 	prefix[0U] = -1L;
 	while (needle_pos < needle_len)
 	{
-		while ((prefix_len >= 0) && (needle[needle_pos] != needle[prefix_len]))
+		while ((prefix_len >= 0) && (!libreplace_compare(needle[needle_pos], needle[prefix_len], ignore_case)))
 		{
 			prefix_len = prefix[prefix_len];
 		}
@@ -215,7 +215,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 	}
 
 	/* pre-compute prefixes */
-	prefix = libreplace_compute_prefixes(logger, needle, needle_len);
+	prefix = libreplace_compute_prefixes(logger, needle, needle_len, options->case_insensitive);
 	if(!prefix)
 	{
 		goto finished;

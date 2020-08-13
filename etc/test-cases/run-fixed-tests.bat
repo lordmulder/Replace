@@ -55,9 +55,23 @@ REM --------------------------------------------------------------------------
 set VERIFY_STATUS=1
 
 for %%p in (Win32,x64) do (
-	for /r %%i in ("out\%%~p\*.txt") do (
+	for %%i in ("out\%%~p\*.txt") do (
 		echo [%%~nxi]
 		fc /B "out\%%~p\%%~nxi" "ref\%%~nxi"
+		if "!ERRORLEVEL!"=="0" (
+			echo Passed
+		) else (
+			set VERIFY_STATUS=0
+			echo Mismatch detected ^^!^^!^^!
+		)
+		echo.
+	)
+)
+
+for %%i in ("ref\*.txt") do (
+	for %%p in (Win32,x64) do (
+		echo [%%~nxi]
+		fc /B "ref\%%~nxi" "out\%%~p\%%~nxi"
 		if "!ERRORLEVEL!"=="0" (
 			echo Passed
 		) else (
