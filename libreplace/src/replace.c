@@ -41,6 +41,7 @@ while(0)
 static const CHAR *const WR_ERROR_MESSAGE = "Write operation failed -> aborting!\n";
 static const CHAR *const RD_ERROR_MESSAGE = "Read operation failed -> aborting!\n";
 static const CHAR *const ABORTING_MESSAGE = "Process cancelled by user --> aborting!\n";
+static const CHAR *const ALLOCATION_ERROR = "Memory allocation failed --> aborting!\n";
 
 /* ======================================================================= */
 /* Ring buffer                                                             */
@@ -207,10 +208,25 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 	ULARGE_INTEGER position = { 0U, 0U }, match_start = { 0U, 0U };
 	ringbuffer_t *ringbuffer = NULL;
 
-	/* allocate temp buffer */
+	/* check parameters */
+	if(!(io_functions && needle && replacement && (needle_len > 0L) && (replacement_len >= 0L) && options && abort_flag))
+	{
+		libreplace_print(logger, "Invalid function parameters detected!\n");
+		goto finished;
+	}
+
+	/* check length limitation */
+	if((needle_len > LIBREPLACE_MAXLEN) || (replacement_len > LIBREPLACE_MAXLEN))
+	{
+		libreplace_print(logger, "Needle and/or replacement length exceeds the allowable limit!\n");
+		goto finished;
+	}
+
+	/* allocate ring buffer */
 	ringbuffer = ringbuffer_alloc(needle_len);
 	if(!ringbuffer)
 	{
+		libreplace_print(logger, ALLOCATION_ERROR);
 		goto finished;
 	}
 
@@ -218,6 +234,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 	prefix = libreplace_compute_prefixes(logger, needle, needle_len, options->case_insensitive);
 	if(!prefix)
 	{
+		libreplace_print(logger, ALLOCATION_ERROR);
 		goto finished;
 	}
 

@@ -20,6 +20,7 @@
 #define LIBREPLACE_VERSION_PATCH 0
 
 #define LIBREPLACE_FLUSH ((WORD)-1)
+#define LIBREPLACE_MAXLEN ((LONG)MAXWORD)
 
 typedef BOOL (*libreplace_rd_func_t)(BYTE *const data, const DWORD_PTR context, BOOL *const error_flag);
 typedef BOOL (*libreplace_wr_func_t)(const WORD data, const DWORD_PTR context);

@@ -219,18 +219,6 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 		goto cleanup;
 	}
 
-	if((!options.self_test) && (lstrlenW(argv[param_offset]) > MAXWORD))
-	{
-		print_text(std_err, "Error: Search string (needle) must not exceed 65535 characters!\n");
-		goto cleanup;
-	}
-
-	if((!options.self_test) && (lstrlenW(argv[param_offset + 1L]) > MAXWORD))
-	{
-		print_text(std_err, "Error: Replacement string must not exceed 65535 characters!\n");
-		goto cleanup;
-	}
-
 	if((argc - param_offset > 2) && (!argv[param_offset + 2L][0U]))
 	{
 		print_text(std_err, "Error: If input file is specified, it must not be an empty string!\n");
@@ -272,10 +260,22 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 		goto cleanup;
 	}
 
+	if(needle_len > LIBREPLACE_MAXLEN)
+	{
+		print_text_fmt(std_err, "Error: Search string (needle) must not exceed %ld characters!\n", LIBREPLACE_MAXLEN);
+		goto cleanup;
+	}
+
 	replacement = options.binary_mode ? decode_hex_string(argv[param_offset + 1U], &replacement_len) : utf16_to_bytes(argv[param_offset + 1U], &replacement_len, SELECTED_CP);
 	if(!replacement)
 	{
 		print_text(std_err, "Error: Failed to decode 'replacement' string!\n");
+		goto cleanup;
+	}
+	
+	if(replacement_len > LIBREPLACE_MAXLEN)
+	{
+		print_text_fmt(std_err, "Error: Replacement string must not exceed %ld characters!\n", LIBREPLACE_MAXLEN);
 		goto cleanup;
 	}
 
@@ -283,7 +283,7 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 	{
 		if(!(expand_escape_chars(needle, &needle_len) && expand_escape_chars(replacement, &replacement_len)))
 		{
-			print_text(std_err, "Error: Parameter contains invalid escape sequence!\n");
+			print_text(std_err, "Error: Parameter contains an invalid escape sequence!\n");
 			goto cleanup;
 		}
 	}
@@ -293,7 +293,7 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 
 	if(NOT_EMPTY(source_file) && NOT_EMPTY(output_file) && (lstrcmpiW(source_file, L"-") != 0) && (lstrcmpiW(output_file, L"-") != 0))
 	{
-		if(lstrcmpiW(source_file, output_file) == 0)
+		if(lstrcmpW(source_file, output_file) == 0)
 		{
 			print_text(std_err, "Error: Input and output file must not be the same!\n");
 			goto cleanup;
