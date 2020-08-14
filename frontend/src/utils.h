@@ -557,8 +557,11 @@ static __inline BOOL file_read_byte(BYTE *const output, const DWORD_PTR input, B
 				const DWORD error = GetLastError();
 				if((!ctx->pipe) || (error != ERROR_NO_DATA))
 				{
-					*error_flag = TRUE;
-					return FALSE; /*failed*/
+					if((error != ERROR_HANDLE_EOF) && (error != ERROR_BROKEN_PIPE))
+					{
+						*error_flag = TRUE;
+					}
+					return FALSE; /*failed or EOF*/
 				}
 			}
 			if(g_abort_requested)
