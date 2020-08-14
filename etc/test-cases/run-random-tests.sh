@@ -2,36 +2,42 @@
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 while true; do
-	len_pattern=$((($RANDOM % 12) + 4))
-	len_replace=$((($RANDOM % 12) + 4))
-	len_indata1=$((($RANDOM % 127) + 251))
-	len_indata2=$((($RANDOM % 127) + 251))
+	pattern="$(tr -dc 'abc' < /dev/urandom | head -c$((($RANDOM % 12) + 4)))"
+	replace="$(tr -dc 'abc' < /dev/urandom | head -c$((($RANDOM % 12) + 4)))"
+	srcdata="$(tr -dc 'abcABC' < /dev/urandom | head -c$(($RANDOM % 293)))${pattern}$(tr -dc 'abcABC' < /dev/urandom | head -c$(($RANDOM % 293)))"
+	globber="?"
+	while [ "${globber}" == "?" ]; do
+		globber="$(tr -dc 'abc' < /dev/urandom | head -c$(($RANDOM % 3)))?$(tr -dc 'abc' < /dev/urandom | head -c$(($RANDOM % 3)))"
+	done;
 	
-	pattern="$(tr -dc 'abc' < /dev/urandom | head -c${len_pattern})"
-	replace="$(tr -dc 'abc' < /dev/urandom | head -c${len_replace})"
-	srcdata="$(tr -dc 'abcABC' < /dev/urandom | head -c${len_indata1})${pattern}$(tr -dc 'abcABC' < /dev/urandom | head -c${len_indata2})"
-	
-	echo "\"${pattern}\" --> \"${replace}\""
+	echo "\"${pattern}\", \"${globber}\" --> \"${replace}\""
 	echo "\"${srcdata}\""
 	
-	refdata1="$(sed "s|${pattern}|${replace}|g"  <<< $srcdata)"
-	refdata2="$(sed "s|${pattern}|${replace}|gi" <<< $srcdata)"
+	refdata1="$(printf '%s' "${srcdata}" | sed "s|${pattern}|${replace}|g")"
+	refdata2="$(printf '%s' "${srcdata}" | sed "s|${pattern}|${replace}|gi")"
+	refdata3="$(printf '%s' "${srcdata}" | sed "s|$(printf '%s' "${globber}" | tr "?" ".")|${replace}|g")"
 	
-	outdata1="$(../../bin/Win32/Release/replace.exe "${pattern}" "${replace}" <<< $srcdata)"
+	outdata1="$(printf '%s' "${srcdata}" | ../../bin/Win32/Release/replace.exe "${pattern}" "${replace}")"
 	if [ "${outdata1}" != "${refdata1}" ]; then
-		echo -e "\033[1;31mMISMATCH!\033[0m\n#1: \"${outdata1}\"\n#2: \"${refdata1}\""
+		echo -e "\033[1;31mMISMATCH! (#1)\033[0m\nout: \"${outdata1}\"\nref: \"${refdata1}\""
 		break;
 	fi
 	
-	outdata2="$(../../bin/Win32/Release/replace.exe -i "${pattern}" "${replace}" <<< $srcdata)"
+	outdata2="$(printf '%s' "${srcdata}" | ../../bin/Win32/Release/replace.exe -i "${pattern}" "${replace}")"
 	if [ "${outdata2}" != "${refdata2}" ]; then
-		echo -e "\033[1;31mMISMATCH!\033[0m\n#1: \"${outdata2}\"\n#2: \"${refdata2}\""
+		echo -e "\033[1;31mMISMATCH! (#2)\033[0m\nout: \"${outdata2}\"\nref: \"${refdata2}\""
 		break;
 	fi
 	
-	outdata3="$(../../bin/Win32/Release/replace.exe -id "${pattern}" "${replace}" <<< $srcdata)"
-	if [ "${outdata3}" != "${srcdata}" ]; then
-		echo -e "\033[1;31mMISMATCH!\033[0m\n#1: \"${outdata3}\"\n#2: \"${srcdata}\""
+	outdata3="$(printf '%s' "${srcdata}" | ../../bin/Win32/Release/replace.exe -g "${globber}" "${replace}")"
+	if [ "${outdata3}" != "${refdata3}" ]; then
+		echo -e "\033[1;31mMISMATCH! (#3)\033[0m\nout: \"${outdata3}\"\nref: \"${refdata3}\""
+		break;
+	fi
+	
+	outdata4="$(printf '%s' "${srcdata}" | ../../bin/Win32/Release/replace.exe -id "${pattern}" "${replace}")"
+	if [ "${outdata4}" != "${srcdata}" ]; then
+		echo -e "\033[1;31mMISMATCH! (#4)\033[0m\nout: \"${outdata4}\"\nref: \"${srcdata}\""
 		break;
 	fi
 	

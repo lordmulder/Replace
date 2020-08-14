@@ -25,6 +25,7 @@
 while(0)
 
 static const CHAR *const ABORTED_MESSAGE = "Process was aborted.\n";
+static const BYTE WILDCARD_CHAR = '?';
 
 /* ======================================================================= */
 /* Manpage                                                                 */
@@ -48,6 +49,7 @@ static void print_manpage(const HANDLE std_err)
 	print_text(std_err, "  -e  Enable interpretation of backslash escape sequences in all parameters\n");
 	print_text(std_err, "  -f  Force immediate flushing of file buffers (may degrade performance)\n");
 	print_text(std_err, "  -b  Binary mode; parameters '<needle>' and '<replacement>' are Hex strings\n");
+	print_text(std_err, "  -g  Enable globbing; the wildcard '?' matches *any* character\n");
 	print_text(std_err, "  -y  Try to overwrite read-only files; i.e. clears the read-only flag\n");
 	print_text(std_err, "  -d  Dry run; do not actually replace occurrences of '<needle>'\n");
 	print_text(std_err, "  -v  Enable verbose mode; print additional diagnostic information to STDERR\n");
@@ -122,6 +124,9 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 					break;
 				case L'f':
 					options->force_sync = TRUE;
+					break;
+				case L'g':
+					options->flags.wildcard = &WILDCARD_CHAR;
 					break;
 				case L'h':
 					options->show_help = TRUE;
@@ -201,9 +206,9 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 	/* Parameter validation                                     */
 	/* -------------------------------------------------------- */
 
-	if(options.binary_mode && (options.ansi_cp || options.escpae_chars || options.flags.case_insensitive))
+	if(options.binary_mode && (options.ansi_cp || options.escpae_chars || options.flags.case_insensitive || options.flags.wildcard))
 	{
-		print_text(std_err, "Error: Options '-a', '-e' and '-i' are incompatible with '-b' option!\n");
+		print_text(std_err, "Error: Options '-a', '-e', '-g' and '-i' are incompatible with binary mode!\n");
 		goto cleanup;
 	}
 

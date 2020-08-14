@@ -49,6 +49,7 @@ typedef struct libreplace_flags_t
 	BOOL replace_once;
 	BOOL dry_run;
 	BOOL verbose;
+	const BYTE *wildcard;
 }
 libreplace_flags_t;
 

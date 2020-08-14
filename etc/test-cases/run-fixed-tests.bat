@@ -38,6 +38,9 @@ for %%p in (Win32,x64) do (
 	"!EXE_PATH!" -i  "@jar_path@" "C:\Windows\System32\drivers\tcpip.sys" "src\input-1.txt" "out\%%~p\output-1m.txt"
 	"!EXE_PATH!" -id "@jar_path@" "C:\Windows\System32\drivers\tcpip.sys" "src\input-1.txt" "out\%%~p\output-1n.txt"
 
+	"!EXE_PATH!"    "@???_PATH@" "C:\Windows\System32\drivers\tcpip.sys" "src\input-1.txt" "out\%%~p\output-1o.txt"
+	"!EXE_PATH!" -g "@???_PATH@" "C:\Windows\System32\drivers\tcpip.sys" "src\input-1.txt" "out\%%~p\output-1p.txt"
+
 	"!EXE_PATH!"    "Cheshire Cat" "White Rabbit" "src\input-2.txt" "out\%%~p\output-2a.txt"
 	"!EXE_PATH!" -s "Cheshire Cat" "White Rabbit" "src\input-2.txt" "out\%%~p\output-2b.txt"
 
