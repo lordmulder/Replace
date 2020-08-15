@@ -12,10 +12,10 @@
 #endif
 
 #define TO_UPPER(X) ((((X) >= 0x61) && ((X) <= 0x7A)) ? ((X) - 0x20) : (X))
-#define IS_WILDCARD(X,Y) (wildcard_map && wildcard_map[(X)] && (match_crlf || (((Y) != 0x0A) && ((Y) != 0x0D))))
-#define COMPARE_CHAR(X,Y) (ignore_case ? (TO_UPPER(X) == TO_UPPER(Y)) : ((X) == (Y)))
+#define IS_WILDCARD(X,Y) (wildcard_map && wildcard_map[(X)] && (options->match_crlf || (((Y) != 0x0A) && ((Y) != 0x0D))))
+#define COMPARE_CHAR(X,Y) (options->case_insensitive ? (TO_UPPER(X) == TO_UPPER(Y)) : ((X) == (Y)))
 
-#define INCREMENT_MOD(VALUE, LIMIT) do \
+#define INCREMENT(VALUE, LIMIT) do \
 { \
 	if(++(VALUE) >= (LIMIT)) { (VALUE) = 0U; } \
 } \
@@ -70,7 +70,7 @@ static __inline BOOL ringbuffer_append(const BYTE in, BYTE *const ptr_out, ringb
 	MY_ASSERT(ringbuffer->index_flush == MAXDWORD);
 	*ptr_out = ringbuffer->buffer[ringbuffer->index_write];
 	ringbuffer->buffer[ringbuffer->index_write] = in;
-	INCREMENT_MOD(ringbuffer->index_write, ringbuffer->capacity);
+	INCREMENT(ringbuffer->index_write, ringbuffer->capacity);
 	if(ringbuffer->valid < ringbuffer->capacity)
 	{
 		++ringbuffer->valid;
@@ -79,7 +79,12 @@ static __inline BOOL ringbuffer_append(const BYTE in, BYTE *const ptr_out, ringb
 	return TRUE;
 }
 
-static __inline BOOL ringbuffer_compare(ringbuffer_t *const ringbuffer, const BYTE *needle, const BOOL *const wildcard_map, const DWORD needle_len, const BOOL ignore_case, const BOOL match_crlf)
+static __forceinline BYTE ringbuffer_peek(const ringbuffer_t *const ringbuffer)
+{
+	return ringbuffer->buffer[ringbuffer->index_write];
+}
+
+static __inline BOOL ringbuffer_compare(const ringbuffer_t *const ringbuffer, const BYTE *needle, const BOOL *const wildcard_map, const DWORD needle_len, const libreplace_flags_t *const options)
 {
 	if(ringbuffer->valid != needle_len)
 	{
@@ -88,7 +93,7 @@ static __inline BOOL ringbuffer_compare(ringbuffer_t *const ringbuffer, const BY
 	if(ringbuffer->index_write == 0U)
 	{
 		DWORD needle_pos;
-		for(needle_pos = 0U; needle_pos < needle_len; ++needle_pos)
+		for(needle_pos = 1U; needle_pos < needle_len; ++needle_pos) /*first element is skipped intentionally!*/
 		{
 			if((!IS_WILDCARD(needle_pos, ringbuffer->buffer[needle_pos])) && (!COMPARE_CHAR(ringbuffer->buffer[needle_pos], needle[needle_pos])))
 			{
@@ -98,14 +103,15 @@ static __inline BOOL ringbuffer_compare(ringbuffer_t *const ringbuffer, const BY
 	}
 	else
 	{
-		DWORD needle_pos, buffer_pos;
-		for(needle_pos = 0U, buffer_pos = ringbuffer->index_write; needle_pos < needle_len; ++needle_pos)
+		DWORD needle_pos, buffer_pos = ringbuffer->index_write;
+		INCREMENT(buffer_pos, ringbuffer->capacity);
+		for(needle_pos = 1U; needle_pos < needle_len; ++needle_pos) /*first element is skipped intentionally!*/
 		{
 			if((!IS_WILDCARD(needle_pos, ringbuffer->buffer[buffer_pos])) && (!COMPARE_CHAR(ringbuffer->buffer[buffer_pos], needle[needle_pos])))
 			{
 				return FALSE;
 			}
-			INCREMENT_MOD(buffer_pos, ringbuffer->capacity);
+			INCREMENT(buffer_pos, ringbuffer->capacity);
 		}
 	}
 	return TRUE;
@@ -121,7 +127,7 @@ static __inline BOOL ringbuffer_flush(BYTE *const out, ringbuffer_t *const ringb
 	{
 		*out = ringbuffer->buffer[ringbuffer->index_flush];
 		--ringbuffer->valid;
-		INCREMENT_MOD(ringbuffer->index_flush, ringbuffer->capacity);
+		INCREMENT(ringbuffer->index_flush, ringbuffer->capacity);
 		return TRUE;
 	}
 	return FALSE;
@@ -230,34 +236,38 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 			}
 		}
 
-		/* if a match has been found, write the replacement */
-		if(ringbuffer_compare(ringbuffer, needle, wildcard_map, needle_len, options->case_insensitive, options->match_crlf))
+		/* perfrom quick pre-test on the first character in the buffer */
+		if(IS_WILDCARD(0U, ringbuffer_peek(ringbuffer)) || COMPARE_CHAR(ringbuffer_peek(ringbuffer), needle[0U]))
 		{
-			++replacement_count;
-			if(options->verbose || options->dry_run)
+			/* if a full match is found, write the replacement */
+			if(ringbuffer_compare(ringbuffer, needle, wildcard_map, needle_len, options))
 			{
-				libreplace_print_fmt(logger, "%s occurence at offset: 0x%08lX%08lX\n", options->dry_run ? "Found" : "Replaced", position.HighPart, position.LowPart);
-			}
-			if(!options->dry_run)
-			{
-				if(!libreplace_write(replacement, replacement_len, io_functions))
+				++replacement_count;
+				if(options->verbose || options->dry_run)
 				{
-					libreplace_print(logger, WR_ERROR_MESSAGE);
-					goto finished;
+					libreplace_print_fmt(logger, "%s occurence at offset: 0x%08lX%08lX\n", options->dry_run ? "Found" : "Replaced", position.HighPart, position.LowPart);
 				}
-				ringbuffer_reset(ringbuffer);
-			}
-			else
-			{
-				if(!libreplace_flush_pending(ringbuffer, io_functions))
+				if(!options->dry_run)
 				{
-					libreplace_print(logger, WR_ERROR_MESSAGE);
-					goto finished;
+					if(!libreplace_write(replacement, replacement_len, io_functions))
+					{
+						libreplace_print(logger, WR_ERROR_MESSAGE);
+						goto finished;
+					}
+					ringbuffer_reset(ringbuffer);
 				}
-			}
-			if(options->replace_once)
-			{
-				break;
+				else
+				{
+					if(!libreplace_flush_pending(ringbuffer, io_functions))
+					{
+						libreplace_print(logger, WR_ERROR_MESSAGE);
+						goto finished;
+					}
+				}
+				if(options->replace_once)
+				{
+					break;
+				}
 			}
 		}
 
