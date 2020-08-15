@@ -1,10 +1,6 @@
 /******************************************************************************/
 /* Replace, by LoRd_MuldeR <MuldeR2@GMX.de>                                   */
 /* This work has been released under the CC0 1.0 Universal license!           */
-/*                                                                            */
-/* This program implements a variant of the "KMP" string-searching algorithm. */
-/* See here for information:                                                  */
-/* https://en.wikipedia.org/wiki/Knuth%E2%80%93Morris%E2%80%93Pratt_algorithm */
 /******************************************************************************/
 
 #ifndef INC_UTILS_H
@@ -19,6 +15,7 @@ typedef struct options_t
 	BOOL show_help;
 	BOOL ansi_cp;
 	BOOL escpae_chars;
+	BOOL globbing;
 	BOOL binary_mode;
 	BOOL force_sync;
 	BOOL force_overwrite;
@@ -41,7 +38,7 @@ volatile BOOL g_abort_requested = FALSE;
 
 #define INVALID_CHAR 0xFF
 
-static BYTE *utf16_to_bytes(const WCHAR *const input, LONG *const length_out, const UINT code_page)
+static BYTE *utf16_to_bytes(const WCHAR *const input, DWORD *const length_out, const UINT code_page)
 {
 	BYTE *buffer;
 	DWORD buffer_size = 0U, result = 0U;
@@ -89,7 +86,7 @@ static __inline BYTE decode_hex_char(const WCHAR c)
 	}
 }
 
-static BYTE *decode_hex_string(const WCHAR *input, LONG *const length_out)
+static BYTE *decode_hex_string(const WCHAR *input, DWORD *const length_out)
 {
 	DWORD len, pos;
 	BYTE *result;
@@ -125,9 +122,9 @@ static BYTE *decode_hex_string(const WCHAR *input, LONG *const length_out)
 	return result;
 }
 
-static BOOL expand_escape_chars(BYTE *const string, LONG *const len)
+static BOOL expand_escape_chars(BYTE *const string, DWORD *const len)
 {
-	LONG pos_in, pos_out;
+	DWORD pos_in, pos_out;
 	BOOL flag = FALSE;
 	for(pos_in = pos_out = 0U; pos_in < *len; ++pos_in)
 	{
@@ -188,6 +185,21 @@ static BOOL expand_escape_chars(BYTE *const string, LONG *const len)
 	{
 		return FALSE;
 	}
+}
+
+static BOOL *create_wildcard_map(const BYTE *const needle, const DWORD needle_len, const BYTE wildcard_char)
+{
+	DWORD needle_pos;
+	BOOL *const wildcard_map = (BOOL*) LocalAlloc(LPTR, sizeof(BOOL) * needle_len);
+	if(!wildcard_map)
+	{
+		return NULL;
+	}
+	for(needle_pos = 0U; needle_pos < needle_len; ++needle_pos)
+	{
+		wildcard_map[needle_pos] = (needle[needle_pos] == wildcard_char);
+	}
+	return wildcard_map;
 }
 
 /* ======================================================================= */
@@ -470,7 +482,7 @@ static __inline BOOL memory_write_byte(const WORD input, const DWORD_PTR output)
 	{
 		if(ctx->pos < ctx->capacity)
 		{
-			ctx->buffer[ctx->pos++] = input & 0xFF;
+			ctx->buffer[ctx->pos++] = (BYTE)input;
 			return TRUE;
 		}
 		return FALSE;

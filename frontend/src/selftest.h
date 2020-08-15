@@ -1,10 +1,6 @@
 /******************************************************************************/
 /* Replace, by LoRd_MuldeR <MuldeR2@GMX.de>                                   */
 /* This work has been released under the CC0 1.0 Universal license!           */
-/*                                                                            */
-/* This program implements a variant of the "KMP" string-searching algorithm. */
-/* See here for information:                                                  */
-/* https://en.wikipedia.org/wiki/Knuth%E2%80%93Morris%E2%80%93Pratt_algorithm */
 /******************************************************************************/
 
 #ifndef INC_SELFTEST_H
@@ -35,7 +31,7 @@
 } \
 while(0)
 
-static BOOL run_test(const BOOL dry_run, const BOOL case_insensitive, const CHAR *const needle, const CHAR *const replacement, const CHAR *const haystack, const CHAR *const expected)
+static BOOL run_test(const BOOL dry_run, const BOOL case_insensitive, const CHAR *const needle, const BOOL *const wildcard_map, const CHAR *const replacement, const CHAR *const haystack, const CHAR *const expected)
 {
 	BOOL success = FALSE;
 	memory_input_t input_context;
@@ -58,7 +54,7 @@ static BOOL run_test(const BOOL dry_run, const BOOL case_insensitive, const CHAR
 
 	init_io_functions(&io_functions, memory_read_byte, memory_write_byte, (DWORD_PTR)&input_context, (DWORD_PTR)output_context);
 
-	if(!libreplace_search_and_replace(&io_functions, NULL, (const BYTE*)needle, lstrlenA(needle), (const BYTE*)replacement, lstrlenA(replacement), &options, &g_abort_requested))
+	if(!libreplace_search_and_replace(&io_functions, NULL, (const BYTE*)needle, wildcard_map, lstrlenA(needle), (const BYTE*)replacement, lstrlenA(replacement), &options, &g_abort_requested))
 	{
 		goto cleanup;
 	}
@@ -85,54 +81,63 @@ cleanup:
 static BOOL self_test(const HANDLE log_output)
 {
 	BOOL success = TRUE;
+	static const BOOL wildcards[] = { FALSE, TRUE, FALSE };
 
-	RUN_TEST( 1, FALSE, FALSE, "LTs3kx", "XJbf3A",
+	RUN_TEST( 1, FALSE, FALSE, "LTs3kx", NULL, "XJbf4A", "",       ""      );
+	RUN_TEST( 2, FALSE, FALSE, "LTs3kx", NULL, "XJbf4A", "LTs3k",  "LTs3k" );
+	RUN_TEST( 3, FALSE, FALSE, "LTs3kx", NULL, "XJbf4A", "LTs3kx", "XJbf4A");
+
+	RUN_TEST( 4, FALSE, FALSE, "LTs3kx", NULL, "XJbf3A",
 		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHptv7toJhdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay",
 		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHptv7toJhdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay");
 
-	RUN_TEST( 2, FALSE, FALSE, "LTs3kx", "XJbf3B",
+	RUN_TEST( 5, FALSE, FALSE, "LTs3kx", NULL, "XJbf3B",
 		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHpLTs3kxhdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay",
 		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHpXJbf3BhdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay");
 
-	RUN_TEST( 3, FALSE, FALSE, "LTs3kx", "",
+	RUN_TEST( 6, FALSE, FALSE, "LTs3kx", NULL, "",
 		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHpLTs3kxhdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay",
 		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHphdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay");
 
-	RUN_TEST( 4, FALSE, FALSE, "LTs3kx", "H4n3zWoHKfbX",
+	RUN_TEST( 7, FALSE, FALSE, "LTs3kx", NULL, "H4n3zWoHKfbX",
 		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHpLTs3kxhdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay",
 		"KJnsbsniWReHocwWghHKmtwue7zLXvT9Ai3twkgmHRahFxTV3EggbHpH4n3zWoHKfbXhdKWCyJ93vPmUqXVtwCuJvpvY9Avu4cojuRwknv7HCYpyNvzJWtdwvEEpsNNyq9JAay");
 
-	RUN_TEST( 5, FALSE, FALSE, "ababaa", "YJbg3A",
+	RUN_TEST( 8, FALSE, FALSE, "ababaa", NULL, "YJbg3A",
 		"aaabaaaabbbaaabbaaaabaaaaabbabbaaaa3aabbbabbaabbbbabbabbbbbbbaabaaaabbaaabbbaaabbbaaaaababaaaaabaaabababaabbabbbabaabaAabaaabbaa",
 		"aaabaaaabbbaaabbaaaabaaaaabbabbaaaa3aabbbabbaabbbbabbabbbbbbbaabaaaabbaaabbbaaabbbaaaaYJbg3AaaabaaabYJbg3AbbabbbabaabaAabaaabbaa");
 
-	RUN_TEST( 6, FALSE, FALSE, "abcabd", "XJcf3A",
+	RUN_TEST( 9, FALSE, FALSE, "abcabd", NULL, "XJcf3A",
 		"abbaccddbcccacbddabcabcdacdbcabcdcccbcdcadbdddcabbcadcdccbabaabacccccabcababcabddbcbbcaadccab4dbaddbdccbdcdbcXccbbbcabbaabdcadccd",
 		"abbaccddbcccacbddabcabcdacdbcabcdcccbcdcadbdddcabbcadcdccbabaabacccccabcabXJcf3Adbcbbcaadccab4dbaddbdccbdcdbcXccbbbcabbaabdcadccd");
 	
-	RUN_TEST( 7, FALSE, FALSE, "bcbbab", "XIbf3A",
+	RUN_TEST(10, FALSE, FALSE, "bcbbab", NULL, "XIbf3A",
 		"cbcaccbcaaaacccbaacaaccc3cbccbbbcaacbbcbabEaabaacccccbccbcbabacabbbcbbcbacccbabcabaccaabaaabbabcaababaabacbccbbccbaccccaccbcbbab",
 		"cbcaccbcaaaacccbaacaaccc3cbccbbbcaacbbcbabEaabaacccccbccbcbabacabbbcbbcbacccbabcabaccaabaaabbabcaababaabacbccbbccbaccccaccXIbf3A");
 
-	RUN_TEST( 8, FALSE, FALSE, "bcbbab", "WJbf3A",
+	RUN_TEST(11, FALSE, FALSE, "bcbbab", NULL, "WJbf3A",
 		"cbcaccbcaaaacccbaacaaccc3cbccbbbcaacbbcbabEaabaacccccbccbcbabacabbbcbbcbacccbabcabaccaabaaabbabcaababaabacbccbbccbaccccaccbbcbba",
 		"cbcaccbcaaaacccbaacaaccc3cbccbbbcaacbbcbabEaabaacccccbccbcbabacabbbcbbcbacccbabcabaccaabaaabbabcaababaabacbccbbccbaccccaccbbcbba");
 
-	RUN_TEST( 9, FALSE, FALSE, "bcbbab", "XJbf2A",
+	RUN_TEST(12, FALSE, FALSE, "bcbbab", NULL, "XJbf2A",
 		"bcbbacbcaccbcaaaacccbaacaaccc3cbccbbbcaacbbcbabEaabaacccccbccbcbabacabbbcbbcbacccbabcabaccaabaaabbabcaababaabacbccbbccbaccccaccb",
 		"bcbbacbcaccbcaaaacccbaacaaccc3cbccbbbcaacbbcbabEaabaacccccbccbcbabacabbbcbbcbacccbabcabaccaabaaabbabcaababaabacbccbbccbaccccaccb");
 
-	RUN_TEST(10, FALSE, FALSE, "kokos", "XJbf4",
+	RUN_TEST(13, FALSE, FALSE, "kokos", NULL, "XJbf4",
 		"xxxkokofxxxkokosnussxxxkokokoxxxxxxkokofxxxkokosnussxxxkokokoxxxxxxkokofxxxkokosnussxxxkokokoxxxxxxkokofxxxkokosnussxxxkokokoxxx",
 		"xxxkokofxxxXJbf4nussxxxkokokoxxxxxxkokofxxxXJbf4nussxxxkokokoxxxxxxkokofxxxXJbf4nussxxxkokokoxxxxxxkokofxxxXJbf4nussxxxkokokoxxx");
 
-	RUN_TEST(11, TRUE, TRUE, "caa", "XjQ",
+	RUN_TEST(14, TRUE, TRUE, "caa", NULL, "XjQ",
 		"7ccCAbbCACcAbAcbcbAbCbaCAbbbcAAbcWCibcCaACabCabCcCAbacAcAAcaCCbCbCcCCccbaaAaCAaaAcbCCCcAbaAcccAaAAbCcCCCAabbCACccCCCAcCacAAcCccC",
 		"7ccCAbbCACcAbAcbcbAbCbaCAbbbcAAbcWCibcCaACabCabCcCAbacAcAAcaCCbCbCcCCccbaaAaCAaaAcbCCCcAbaAcccAaAAbCcCCCAabbCACccCCCAcCacAAcCccC");
 
-	RUN_TEST(12, FALSE, TRUE, "caa", "XjQ",
+	RUN_TEST(15, FALSE, TRUE, "caa", NULL, "XjQ",
 		"7ccCAbbCACcAbAcbcbAbCbaCAbbbcAAbcWCibcCaACabCabCcCAbacAcAAcaCCbCbCcCCccbaaAaCAaaAcbCCCcAbaAcccAaAAbCcCCCAabbCACccCCCAcCacAAcCccC",
 		"7ccCAbbCACcAbAcbcbAbCbaCAbbbXjQbcWCibcXjQCabCabCcCAbacAXjQcaCCbCbCcCCccbaaAaXjQaAcbCCCcAbaAccXjQAAbCcCCXjQbbCACccCCCAcCaXjQcCccC");
+
+	RUN_TEST(16, FALSE, FALSE, "a?c", wildcards, "Jbf",
+		"cabbababbbbcabcacacbabbbbbbccaacabbbcbccbabcbbbccaabbcbbccbcccbbabccaabbbbbbbcbabcaccabcbaccbaaccbcbacbabbbcacaccaccaaacacaabaac",
+		"cabbababbbbcJbfacacbabbbbbbccJbfabbbcbccbJbfbbbccaabbcbbccbcccbbJbfcaabbbbbbbcbJbfJbfJbfbJbfbJbfcbcbacbabbbcacJbfJbfaJbfacaabJbf");
 
 	return success;
 }

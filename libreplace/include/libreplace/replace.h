@@ -1,10 +1,6 @@
 /******************************************************************************/
 /* Replace, by LoRd_MuldeR <MuldeR2@GMX.de>                                   */
 /* This work has been released under the CC0 1.0 Universal license!           */
-/*                                                                            */
-/* This program implements a variant of the "KMP" string-searching algorithm. */
-/* See here for information:                                                  */
-/* https://en.wikipedia.org/wiki/Knuth%E2%80%93Morris%E2%80%93Pratt_algorithm */
 /******************************************************************************/
 
 #ifndef INC_LIBREPLACE_H
@@ -16,11 +12,11 @@
 #endif
 
 #define LIBREPLACE_VERSION_MAJOR 1
-#define LIBREPLACE_VERSION_MINOR 6
+#define LIBREPLACE_VERSION_MINOR 7
 #define LIBREPLACE_VERSION_PATCH 0
 
 #define LIBREPLACE_FLUSH ((WORD)-1)
-#define LIBREPLACE_MAXLEN ((LONG)MAXWORD)
+#define LIBREPLACE_MAXLEN ((DWORD)(MAXDWORD >> 1))
 
 typedef BOOL (*libreplace_rd_func_t)(BYTE *const data, const DWORD_PTR context, BOOL *const error_flag);
 typedef BOOL (*libreplace_wr_func_t)(const WORD data, const DWORD_PTR context);
@@ -48,11 +44,11 @@ typedef struct libreplace_flags_t
 	BOOL case_insensitive;
 	BOOL replace_once;
 	BOOL dry_run;
+	BOOL match_crlf;
 	BOOL verbose;
-	const BYTE *wildcard;
 }
 libreplace_flags_t;
 
-BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, const libreplace_logger_t *const logger, const BYTE *const needle, const LONG needle_len, const BYTE *const replacement, const LONG replacement_len, const libreplace_flags_t *const options, volatile BOOL *const abort_flag);
+BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, const libreplace_logger_t *const logger, const BYTE *const needle, const BOOL *const wildcard_map, const DWORD needle_len, const BYTE *const replacement, const DWORD replacement_len, const libreplace_flags_t *const options, volatile BOOL *const abort_flag);
 
 #endif /*INC_LIBREPLACE_H*/

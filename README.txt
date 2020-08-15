@@ -13,6 +13,8 @@ Options:
   -e  Enable interpretation of backslash escape sequences in all parameters
   -f  Force immediate flushing of file buffers (may degrade performance)
   -b  Binary mode; parameters '<needle>' and '<replacement>' are Hex strings
+  -g  Enable globbing; the wildcard '?' matches any character except CR/LF
+  -l  With globbing enabled, make the wildcard character match CR and LF too
   -y  Try to overwrite read-only files; i.e. clears the read-only flag
   -d  Dry run; do not actually replace occurrences of '<needle>'
   -v  Enable verbose mode; print additional diagnostic information to STDERR

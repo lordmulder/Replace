@@ -1,10 +1,6 @@
 /******************************************************************************/
 /* Replace, by LoRd_MuldeR <MuldeR2@GMX.de>                                   */
 /* This work has been released under the CC0 1.0 Universal license!           */
-/*                                                                            */
-/* This program implements a variant of the "KMP" string-searching algorithm. */
-/* See here for information:                                                  */
-/* https://en.wikipedia.org/wiki/Knuth%E2%80%93Morris%E2%80%93Pratt_algorithm */
 /******************************************************************************/
 
 #include "libreplace/replace.h"
@@ -25,7 +21,7 @@
 while(0)
 
 static const CHAR *const ABORTED_MESSAGE = "Process was aborted.\n";
-static const BYTE WILDCARD_CHAR = '?';
+static const BYTE WILDCARD = '?';
 
 /* ======================================================================= */
 /* Manpage                                                                 */
@@ -49,7 +45,8 @@ static void print_manpage(const HANDLE std_err)
 	print_text(std_err, "  -e  Enable interpretation of backslash escape sequences in all parameters\n");
 	print_text(std_err, "  -f  Force immediate flushing of file buffers (may degrade performance)\n");
 	print_text(std_err, "  -b  Binary mode; parameters '<needle>' and '<replacement>' are Hex strings\n");
-	print_text(std_err, "  -g  Enable globbing; the wildcard '?' matches *any* character\n");
+	print_text(std_err, "  -g  Enable globbing; the wildcard '?' matches any character except CR/LF\n");
+	print_text(std_err, "  -l  With globbing enabled, make the wildcard character match CR and LF too\n");
 	print_text(std_err, "  -y  Try to overwrite read-only files; i.e. clears the read-only flag\n");
 	print_text(std_err, "  -d  Dry run; do not actually replace occurrences of '<needle>'\n");
 	print_text(std_err, "  -v  Enable verbose mode; print additional diagnostic information to STDERR\n");
@@ -126,13 +123,16 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 					options->force_sync = TRUE;
 					break;
 				case L'g':
-					options->flags.wildcard = &WILDCARD_CHAR;
+					options->globbing = TRUE;
 					break;
 				case L'h':
 					options->show_help = TRUE;
 					break;
 				case L'i':
 					options->flags.case_insensitive = TRUE;
+					break;
+				case L'l':
+					options->flags.match_crlf = TRUE;
 					break;
 				case L's':
 					options->flags.replace_once = TRUE;
@@ -169,13 +169,14 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 	UINT result = 1U, previous_output_cp = 0U;
 	int param_offset = 1;
 	BYTE *needle = NULL, *replacement = NULL;
+	BOOL *wildcard_map = NULL;
+	DWORD needle_len = 0U, replacement_len = 0U;
 	options_t options;
 	HANDLE input = INVALID_HANDLE_VALUE, output = INVALID_HANDLE_VALUE;
 	libreplace_logger_t logger;
 	libreplace_io_t io_functions;
 	file_input_t *file_input_context = NULL;
 	file_output_t *file_output_context = NULL;
-	LONG needle_len = 0L, replacement_len = 0L;
 	const WCHAR *source_file = NULL, *output_file = NULL, *temp_path = NULL, *temp_file = NULL;
 
 	/* -------------------------------------------------------- */
@@ -206,9 +207,15 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 	/* Parameter validation                                     */
 	/* -------------------------------------------------------- */
 
-	if(options.binary_mode && (options.ansi_cp || options.escpae_chars || options.flags.case_insensitive || options.flags.wildcard))
+	if(options.binary_mode && (options.ansi_cp || options.escpae_chars || options.globbing || options.flags.case_insensitive))
 	{
 		print_text(std_err, "Error: Options '-a', '-e', '-g' and '-i' are incompatible with binary mode!\n");
+		goto cleanup;
+	}
+
+	if(options.flags.match_crlf && (!options.globbing))
+	{
+		print_text(std_err, "Error: Options '-l' only makes sense when globbing is enabled!\n");
 		goto cleanup;
 	}
 
@@ -246,7 +253,7 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 		if(!self_test(std_err))
 		{
 			CHECK_ABORT_REQUEST();
-			print_text(std_err, "Error: Self-test failed!\n");
+			print_text(std_err, "Error: Self-test failed !!!\n");
 			goto cleanup;
 		}
 		print_text(std_err, "Self-test completed.\n");
@@ -289,6 +296,16 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 		if(!(expand_escape_chars(needle, &needle_len) && expand_escape_chars(replacement, &replacement_len)))
 		{
 			print_text(std_err, "Error: Parameter contains an invalid escape sequence!\n");
+			goto cleanup;
+		}
+	}
+
+	if(options.globbing)
+	{
+		wildcard_map = create_wildcard_map(needle, needle_len, WILDCARD);
+		if(!wildcard_map)
+		{
+			print_text(std_err, "Error: Failed to set up the wildcard map!\n");
 			goto cleanup;
 		}
 	}
@@ -413,7 +430,7 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 
 	CHECK_ABORT_REQUEST();
 
-	if(!libreplace_search_and_replace(&io_functions, &logger, needle, needle_len, replacement, replacement_len, &options.flags, &g_abort_requested))
+	if(!libreplace_search_and_replace(&io_functions, &logger, needle, wildcard_map, needle_len, replacement, replacement_len, &options.flags, &g_abort_requested))
 	{
 		CHECK_ABORT_REQUEST();
 		print_text(std_err, "Error: Something went wrong. Output probably is incomplete!\n");
@@ -483,6 +500,11 @@ cleanup:
 	if(replacement)
 	{
 		LocalFree((HLOCAL)replacement);
+	}
+
+	if(wildcard_map)
+	{
+		LocalFree((HLOCAL)wildcard_map);
 	}
 
 	if(temp_file)
