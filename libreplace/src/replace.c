@@ -11,8 +11,11 @@
 #define MY_ASSERT(X) __noop((X))
 #endif
 
+static const CHAR  CHAR_LF = 0x0A;
+static const CHAR  CHAR_CR = 0x0D;
+
 #define TO_UPPER(X) ((((X) >= 0x61) && ((X) <= 0x7A)) ? ((X) - 0x20) : (X))
-#define IS_WILDCARD(X,Y) (wildcard_map && wildcard_map[(X)] && (options->match_crlf || (((Y) != 0x0A) && ((Y) != 0x0D))))
+#define IS_WILDCARD(X,Y) (wildcard_map && wildcard_map[(X)] && (options->match_crlf || (((Y) != CHAR_LF) && ((Y) != CHAR_CR))))
 #define COMPARE_CHAR(X,Y) (options->case_insensitive ? (TO_UPPER(X) == TO_UPPER(Y)) : ((X) == (Y)))
 
 #define INCREMENT(VALUE, LIMIT) do \
@@ -162,6 +165,25 @@ static __inline BOOL libreplace_print_fmt(const libreplace_logger_t *const logge
 	return result;
 }
 
+static __inline BOOL libreplace_normalize(BYTE *const char_ptr, BYTE *const last_linbreak)
+{
+	if((*char_ptr == CHAR_LF) || (*char_ptr == CHAR_CR))
+	{
+		if((*last_linbreak != 0U) && (*char_ptr != *last_linbreak))
+		{
+			*last_linbreak = 0U;
+			return FALSE;
+		}
+		*last_linbreak = *char_ptr;
+		*char_ptr = CHAR_LF;
+	}
+	else
+	{
+		*last_linbreak = 0U; /*not a line-break*/
+	}
+	return TRUE;
+}
+
 static __inline BOOL libreplace_write(const BYTE *const data, const DWORD data_len, const libreplace_io_t *const io_functions)
 {
 	DWORD data_pos;
@@ -195,8 +217,8 @@ static __inline BOOL libreplace_flush_pending(ringbuffer_t *const ringbuffer, co
 
 BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, const libreplace_logger_t *const logger, const BYTE *const needle, const BOOL *const wildcard_map, const DWORD needle_len, const BYTE *const replacement, const DWORD replacement_len, const libreplace_flags_t *const options, volatile BOOL *const abort_flag)
 {
+	BYTE char_in, char_out, last_linbreak = 0U;
 	BOOL success = FALSE, pending_input = FALSE, error_flag = FALSE;
-	BYTE char_in, char_out;
 	DWORD replacement_count = 0U;
 	ULARGE_INTEGER position = { 0U, 0U };
 	ringbuffer_t *ringbuffer = NULL;
@@ -226,6 +248,15 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 	/* process all available input data */
 	while(pending_input = io_functions->func_rd(&char_in, io_functions->context_rd, &error_flag))
 	{
+		/* fix up CRLF/LFCR line-breaks, if normalization is enabled */
+		if(options->normalize)
+		{
+			if(!libreplace_normalize(&char_in, &last_linbreak))
+			{
+				continue; /*skip char*/
+			}
+		}
+
 		/* add next character to buffer*/
 		if(ringbuffer_append(char_in, &char_out, ringbuffer))
 		{

@@ -45,6 +45,7 @@ static void print_manpage(const HANDLE std_err)
 	print_text(std_err, "  -e  Enable interpretation of backslash escape sequences in all parameters\n");
 	print_text(std_err, "  -f  Force immediate flushing of file buffers (may degrade performance)\n");
 	print_text(std_err, "  -b  Binary mode; parameters '<needle>' and '<replacement>' are Hex strings\n");
+	print_text(std_err, "  -n  Normalize CR+LF (Windows) and CR (MacOS) line-breaks to LF (Unix)\n");
 	print_text(std_err, "  -g  Enable globbing; the wildcard '?' matches any character except CR/LF\n");
 	print_text(std_err, "  -l  With globbing enabled, make the wildcard character match CR and LF too\n");
 	print_text(std_err, "  -y  Try to overwrite read-only files; i.e. clears the read-only flag\n");
@@ -133,6 +134,9 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 					break;
 				case L'l':
 					options->flags.match_crlf = TRUE;
+					break;
+				case L'n':
+					options->flags.normalize = TRUE;
 					break;
 				case L's':
 					options->flags.replace_once = TRUE;

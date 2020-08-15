@@ -42,6 +42,7 @@ libreplace_logger_t;
 typedef struct libreplace_flags_t
 { 
 	BOOL case_insensitive;
+	BOOL normalize;
 	BOOL replace_once;
 	BOOL dry_run;
 	BOOL match_crlf;
