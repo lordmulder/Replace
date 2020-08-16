@@ -220,7 +220,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 	ringbuffer_t *ringbuffer = NULL;
 
 	/* check parameters */
-	if(!(io_functions && needle && replacement && (needle_len > 0U) && (replacement_len >= 0U) && options && abort_flag))
+	if(!(io_functions && needle && replacement && (needle_len > 0U) && options && abort_flag))
 	{
 		libreplace_print(logger, "Invalid function parameters detected!\n");
 		goto finished;
