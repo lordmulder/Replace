@@ -10,7 +10,6 @@ REM ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 if not exist "%MSVC_PATH%\vcvarsall.bat" (
 	echo VisualC++ could not be found. Please check MSVC_PATH and try again ^^!^^!^^!
-	pause
 	goto:BuildHasFailed
 )
 
@@ -24,7 +23,6 @@ for %%i in (bin,obj) do (
 	rmdir /Q /S "%~dp0.\%%i" 2> NUL
 	if exist "%~dp0.\%%i" (
 		echo Failed to delete existing "%~dp0.\%%i" directory!
-		pause
 		goto:BuildHasFailed
 	)
 )

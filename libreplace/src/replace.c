@@ -87,16 +87,12 @@ static __forceinline BYTE ringbuffer_peek(const ringbuffer_t *const ringbuffer)
 	return ringbuffer->buffer[ringbuffer->index_write];
 }
 
-static __inline BOOL ringbuffer_compare(const ringbuffer_t *const ringbuffer, const BYTE *needle, const BOOL *const wildcard_map, const DWORD needle_len, const libreplace_flags_t *const options)
+static __inline BOOL ringbuffer_compare(const ringbuffer_t *const ringbuffer, const BYTE *needle, const BOOL *const wildcard_map, const libreplace_flags_t *const options)
 {
-	if(ringbuffer->valid != needle_len)
-	{
-		return FALSE;
-	}
 	if(ringbuffer->index_write == 0U)
 	{
 		DWORD needle_pos;
-		for(needle_pos = 1U; needle_pos < needle_len; ++needle_pos) /*first element is skipped intentionally!*/
+		for(needle_pos = 1U; needle_pos < ringbuffer->capacity; ++needle_pos) /*first element is skipped intentionally!*/
 		{
 			if((!IS_WILDCARD(needle_pos, ringbuffer->buffer[needle_pos])) && (!COMPARE_CHAR(ringbuffer->buffer[needle_pos], needle[needle_pos])))
 			{
@@ -108,7 +104,7 @@ static __inline BOOL ringbuffer_compare(const ringbuffer_t *const ringbuffer, co
 	{
 		DWORD needle_pos, buffer_pos = ringbuffer->index_write;
 		INCREMENT(buffer_pos, ringbuffer->capacity);
-		for(needle_pos = 1U; needle_pos < needle_len; ++needle_pos) /*first element is skipped intentionally!*/
+		for(needle_pos = 1U; needle_pos < ringbuffer->capacity; ++needle_pos) /*first element is skipped intentionally!*/
 		{
 			if((!IS_WILDCARD(needle_pos, ringbuffer->buffer[buffer_pos])) && (!COMPARE_CHAR(ringbuffer->buffer[buffer_pos], needle[needle_pos])))
 			{
@@ -253,7 +249,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 		{
 			if(!libreplace_normalize(&char_in, &last_linbreak))
 			{
-				continue; /*skip char*/
+				continue; /*discard char*/
 			}
 		}
 
@@ -267,11 +263,17 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 			}
 		}
 
+		/* make sure enough input data is in the buffer */
+		if(ringbuffer->valid < needle_len)
+		{
+			goto skip_check;
+		}
+
 		/* perfrom quick pre-test on the first character in the buffer */
 		if(IS_WILDCARD(0U, ringbuffer_peek(ringbuffer)) || COMPARE_CHAR(ringbuffer_peek(ringbuffer), needle[0U]))
 		{
 			/* if a full match is found, write the replacement */
-			if(ringbuffer_compare(ringbuffer, needle, wildcard_map, needle_len, options))
+			if(ringbuffer_compare(ringbuffer, needle, wildcard_map, options))
 			{
 				++replacement_count;
 				if(options->verbose || options->dry_run)
@@ -301,6 +303,8 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 				}
 			}
 		}
+
+	skip_check:
 
 		/*incremet the file position*/
 		++position.QuadPart;
