@@ -1,4 +1,4 @@
-Replace, by LoRd_MuldeR <MuldeR2@GMX.de>
+Replace v1.7.0, by LoRd_MuldeR <MuldeR2@GMX.de>
 
 Replaces any occurrence of '<needle>' in '<input_file>' with '<replacement>'.
 The modified contents are then written to '<output_file>'.
@@ -13,6 +13,7 @@ Options:
   -e  Enable interpretation of backslash escape sequences in all parameters
   -f  Force immediate flushing of file buffers (may degrade performance)
   -b  Binary mode; parameters '<needle>' and '<replacement>' are Hex strings
+  -n  Normalize CR+LF (Windows) and CR (MacOS) line-breaks to LF (Unix)
   -g  Enable globbing; the wildcard '?' matches any character except CR/LF
   -l  With globbing enabled, make the wildcard character match CR and LF too
   -y  Try to overwrite read-only files; i.e. clears the read-only flag

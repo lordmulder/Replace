@@ -263,7 +263,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 			}
 		}
 
-		/* make sure enough input data is in the buffer */
+		/* make sure enough input data is present in the buffer */
 		if(ringbuffer->valid < needle_len)
 		{
 			goto skip_check;
