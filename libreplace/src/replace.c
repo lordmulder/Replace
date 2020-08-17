@@ -16,9 +16,9 @@
 #define CHAR_LF ((BYTE)0x0AU)
 #define CHAR_CR ((BYTE)0x0DU)
 
-#define TO_UPPER(X) (((BYTE_CAST(X) >= 0x61U) && (BYTE_CAST(X) <= 0x7AU)) ? BYTE_CAST(BYTE_CAST(X) - 0x20U) : BYTE_CAST(X))
-#define IS_WILDCARD(X,Y) (((X) == LIBREPLACE_WILDCARD) && (options->match_crlf || ((BYTE_CAST(Y) != CHAR_LF) && (BYTE_CAST(Y) != CHAR_CR))))
-#define COMPARE_CHAR(X,Y) (options->case_insensitive ? (TO_UPPER(X) == TO_UPPER(Y)) : (BYTE_CAST(X) == BYTE_CAST(Y)))
+#define TO_UPPER(X) ((((X) >= 0x61U) && ((X) <= 0x7AU)) ? BYTE_CAST((X) - 0x20U) : (X))
+#define IS_WILDCARD(X,Y) (((X) == LIBREPLACE_WILDCARD) && (options->match_crlf || (((Y) != CHAR_LF) && ((Y) != CHAR_CR))))
+#define COMPARE_CHAR(X,Y) (options->case_insensitive ? (TO_UPPER(X) == TO_UPPER(Y)) : ((X) == (Y)))
 
 #define INCREMENT(VALUE, LIMIT) do \
 { \
@@ -96,7 +96,7 @@ static __inline BOOL ringbuffer_compare(const ringbuffer_t *const ringbuffer, co
 		DWORD needle_pos;
 		for(needle_pos = 1U; needle_pos < ringbuffer->valid; ++needle_pos) /*first element is skipped!*/
 		{
-			if((!IS_WILDCARD(needle[needle_pos], ringbuffer->buffer[needle_pos])) && (!COMPARE_CHAR(ringbuffer->buffer[needle_pos], needle[needle_pos])))
+			if((!IS_WILDCARD(needle[needle_pos], ringbuffer->buffer[needle_pos])) && (!COMPARE_CHAR(ringbuffer->buffer[needle_pos], BYTE_CAST(needle[needle_pos]))))
 			{
 				return FALSE;
 			}
@@ -108,7 +108,7 @@ static __inline BOOL ringbuffer_compare(const ringbuffer_t *const ringbuffer, co
 		INCREMENT(buffer_pos, ringbuffer->capacity);
 		for(needle_pos = 1U; needle_pos < ringbuffer->valid; ++needle_pos) /*first element is skipped!*/
 		{
-			if((!IS_WILDCARD(needle[needle_pos], ringbuffer->buffer[buffer_pos])) && (!COMPARE_CHAR(ringbuffer->buffer[buffer_pos], needle[needle_pos])))
+			if((!IS_WILDCARD(needle[needle_pos], ringbuffer->buffer[buffer_pos])) && (!COMPARE_CHAR(ringbuffer->buffer[buffer_pos], BYTE_CAST(needle[needle_pos]))))
 			{
 				return FALSE;
 			}
@@ -270,7 +270,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 		}
 
 		/* perfrom quick pre-test on the first character in the buffer */
-		if((!IS_WILDCARD(needle[0U], ringbuffer_peek(ringbuffer))) && (!COMPARE_CHAR(ringbuffer_peek(ringbuffer), needle[0U])))
+		if((!IS_WILDCARD(needle[0U], ringbuffer_peek(ringbuffer))) && (!COMPARE_CHAR(ringbuffer_peek(ringbuffer), BYTE_CAST(needle[0U]))))
 		{
 			goto skip_check; 
 		}
