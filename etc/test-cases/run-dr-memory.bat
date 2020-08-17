@@ -4,6 +4,9 @@ cd /d "%~dp0"
 
 set "DR_MEMORY_PATH=C:\Program Files (x86)\Dr. Memory\bin\drmemory.exe"
 
+rmdir /Q /S "out" 2> NUL
+mkdir "out" 2> NUL
+
 REM --------------------------------------------------------------------------
 REM RUN TESTS
 REM --------------------------------------------------------------------------
@@ -30,8 +33,8 @@ for %%p in (Win32,x64) do (
 	"%DR_MEMORY_PATH%" "!EXE_PATH!" "@@ICO_PATH@@" "C:\texlive\2017\tlpkg\tlpsv\psv.ico"                          "out\%%~p\output-1i.txt"
 	"%DR_MEMORY_PATH%" "!EXE_PATH!" "ababcabab"    "Lorem ipsum dolor sit amet, consectetur adipisici elit sed^!" "out\%%~p\output-1i.txt"
 	
-	"%DR_MEMORY_PATH%" "..\utils\win32\pipe-utils\mkpipe.exe" "<" "src\input-1.txt" "!EXE_PATH!" "@@JAR_PATH@@" "C:\Windows\System32\drivers\tcpip.sys" ">" out\%%~p\output-1j.txt"
-	"%DR_MEMORY_PATH%" "..\utils\win32\pipe-utils\mkpipe.exe" "<" "src\input-1.txt" "!EXE_PATH!" "@JAR_PATH@"   "C:\Windows\System32\drivers\tcpip.sys" ">" out\%%~p\output-1k.txt"
+	type "src\input-1.txt" | "%DR_MEMORY_PATH%" "!EXE_PATH!" "@@JAR_PATH@@" "C:\Windows\System32\drivers\tcpip.sys" > out\%%~p\output-1j.txt"
+	type "src\input-1.txt" | "%DR_MEMORY_PATH%" "!EXE_PATH!" "@JAR_PATH@"   "C:\Windows\System32\drivers\tcpip.sys" > out\%%~p\output-1k.txt"
 	
 	"%DR_MEMORY_PATH%" "!EXE_PATH!"     "@jar_path@" "C:\Windows\System32\drivers\tcpip.sys" "src\input-1.txt" "out\%%~p\output-1l.txt"
 	"%DR_MEMORY_PATH%" "!EXE_PATH!" -i  "@jar_path@" "C:\Windows\System32\drivers\tcpip.sys" "src\input-1.txt" "out\%%~p\output-1m.txt"

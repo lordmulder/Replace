@@ -9,6 +9,12 @@
 
 #include <ShellAPI.h> /*CommandLineToArgvW*/
 
+#ifdef _DEBUG
+#define _tmain main
+#else
+#define _tmain replace_main
+#endif
+
 #define CHECK_ABORT_REQUEST() do \
 { \
 	if(g_abort_requested) \
@@ -167,7 +173,7 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 /* Main                                                                    */
 /* ======================================================================= */
 
-static UINT _main(const int argc, const LPWSTR *const argv)
+UINT _tmain(const int argc, const LPWSTR *const argv)
 {
 	UINT result = 1U, previous_output_cp = 0U;
 	int param_offset = 1;
@@ -550,7 +556,7 @@ void startup(void)
 
 	if(argv = CommandLineToArgvW(GetCommandLineW(), &argc))
 	{
-		result = _main(argc, argv);
+		result = _tmain(argc, argv);
 		LocalFree(argv);
 	}
 
