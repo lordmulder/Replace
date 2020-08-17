@@ -21,7 +21,6 @@
 while(0)
 
 static const CHAR *const ABORTED_MESSAGE = "Process was aborted.\n";
-static const BYTE WILDCARD = '?';
 
 /* ======================================================================= */
 /* Manpage                                                                 */
@@ -173,7 +172,7 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 	UINT result = 1U, previous_output_cp = 0U;
 	int param_offset = 1;
 	BYTE *needle = NULL, *replacement = NULL;
-	BOOL *wildcard_map = NULL;
+	WORD *needle_expanded = NULL;
 	DWORD needle_len = 0U, replacement_len = 0U;
 	options_t options;
 	HANDLE input = INVALID_HANDLE_VALUE, output = INVALID_HANDLE_VALUE;
@@ -304,14 +303,11 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 		}
 	}
 
-	if(options.globbing)
+	needle_expanded = expand_wildcards(needle, needle_len, options.globbing ? &MY_WILDCARD : NULL);
+	if(!needle_expanded)
 	{
-		wildcard_map = create_wildcard_map(needle, needle_len, WILDCARD);
-		if(!wildcard_map)
-		{
-			print_text(std_err, "Error: Failed to set up the wildcard map!\n");
-			goto cleanup;
-		}
+		print_text(std_err, "Error: Failed to expand wildcard characters!\n");
+		goto cleanup;
 	}
 
 	source_file = (argc - param_offset > 2U) ? argv[param_offset + 2U] : NULL;
@@ -434,7 +430,7 @@ static UINT _main(const int argc, const LPWSTR *const argv)
 
 	CHECK_ABORT_REQUEST();
 
-	if(!libreplace_search_and_replace(&io_functions, &logger, needle, wildcard_map, needle_len, replacement, replacement_len, &options.flags, &g_abort_requested))
+	if(!libreplace_search_and_replace(&io_functions, &logger, needle_expanded, needle_len, replacement, replacement_len, &options.flags, &g_abort_requested))
 	{
 		CHECK_ABORT_REQUEST();
 		print_text(std_err, "Error: Something went wrong. Output probably is incomplete!\n");
@@ -501,14 +497,14 @@ cleanup:
 		LocalFree((HLOCAL)needle);
 	}
 
+	if(needle_expanded)
+	{
+		LocalFree((HLOCAL)needle_expanded);
+	}
+
 	if(replacement)
 	{
 		LocalFree((HLOCAL)replacement);
-	}
-
-	if(wildcard_map)
-	{
-		LocalFree((HLOCAL)wildcard_map);
 	}
 
 	if(temp_file)

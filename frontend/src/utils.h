@@ -26,6 +26,9 @@ options_t;
 /* Abort flag */
 volatile BOOL g_abort_requested = FALSE;
 
+/* Wildcard char */
+static const BYTE MY_WILDCARD = '?';
+
 /* ======================================================================= */
 /* String Routines                                                         */
 /* ======================================================================= */
@@ -187,19 +190,19 @@ static BOOL expand_escape_chars(BYTE *const string, DWORD *const len)
 	}
 }
 
-static BOOL *create_wildcard_map(const BYTE *const needle, const DWORD needle_len, const BYTE wildcard_char)
+static WORD *expand_wildcards(const BYTE *const needle, const DWORD needle_len, const BYTE *const wildcard_char)
 {
-	DWORD needle_pos;
-	BOOL *const wildcard_map = (BOOL*) LocalAlloc(LPTR, sizeof(BOOL) * needle_len);
-	if(!wildcard_map)
+	WORD *const result = (WORD*) LocalAlloc(LPTR, sizeof(WORD) * needle_len);
+	if(result)
 	{
-		return NULL;
+		DWORD needle_pos;
+		for(needle_pos = 0U; needle_pos < needle_len; ++needle_pos)
+		{
+			result[needle_pos] = (wildcard_char && (needle[needle_pos] == *wildcard_char)) ? LIBREPLACE_WILDCARD : needle[needle_pos];
+		}
+		return result;
 	}
-	for(needle_pos = 0U; needle_pos < needle_len; ++needle_pos)
-	{
-		wildcard_map[needle_pos] = (needle[needle_pos] == wildcard_char);
-	}
-	return wildcard_map;
+	return NULL;
 }
 
 /* ======================================================================= */
@@ -596,7 +599,7 @@ static __inline BOOL file_write_byte(const WORD input, const DWORD_PTR output)
 	file_output_t *const ctx = (file_output_t*) output;
 	if(input != LIBREPLACE_FLUSH)
 	{
-		ctx->buffer[ctx->pos++] = input & 0xFF;
+		ctx->buffer[ctx->pos++] = (BYTE)(input & 0xFFU);
 	}
 	if((ctx->pos >= IO_BUFF_SIZE) || (input == LIBREPLACE_FLUSH))
 	{

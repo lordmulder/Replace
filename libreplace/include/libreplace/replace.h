@@ -15,8 +15,9 @@
 #define LIBREPLACE_VERSION_MINOR 7
 #define LIBREPLACE_VERSION_PATCH 0
 
-#define LIBREPLACE_FLUSH ((WORD)-1)
-#define LIBREPLACE_MAXLEN ((DWORD)(MAXDWORD >> 1))
+#define LIBREPLACE_FLUSH    ((WORD)-1)
+#define LIBREPLACE_WILDCARD ((WORD)MAXWORD)
+#define LIBREPLACE_MAXLEN   ((DWORD)(MAXDWORD >> 1))
 
 typedef BOOL (*libreplace_rd_func_t)(BYTE *const data, const DWORD_PTR context, BOOL *const error_flag);
 typedef BOOL (*libreplace_wr_func_t)(const WORD data, const DWORD_PTR context);
@@ -50,6 +51,6 @@ typedef struct libreplace_flags_t
 }
 libreplace_flags_t;
 
-BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, const libreplace_logger_t *const logger, const BYTE *const needle, const BOOL *const wildcard_map, const DWORD needle_len, const BYTE *const replacement, const DWORD replacement_len, const libreplace_flags_t *const options, volatile BOOL *const abort_flag);
+BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, const libreplace_logger_t *const logger, const WORD *const needle, const DWORD needle_len, const BYTE *const replacement, const DWORD replacement_len, const libreplace_flags_t *const options, volatile BOOL *const abort_flag);
 
 #endif /*INC_LIBREPLACE_H*/

@@ -11,12 +11,14 @@
 #define MY_ASSERT(X) __noop((X))
 #endif
 
-static const CHAR  CHAR_LF = 0x0A;
-static const CHAR  CHAR_CR = 0x0D;
+#define BYTE_CAST(X) ((BYTE)((X) & 0xFFU))
 
-#define TO_UPPER(X) ((((X) >= 0x61) && ((X) <= 0x7A)) ? ((X) - 0x20) : (X))
-#define IS_WILDCARD(X,Y) (wildcard_map && wildcard_map[(X)] && (options->match_crlf || (((Y) != CHAR_LF) && ((Y) != CHAR_CR))))
-#define COMPARE_CHAR(X,Y) (options->case_insensitive ? (TO_UPPER(X) == TO_UPPER(Y)) : ((X) == (Y)))
+#define CHAR_LF ((BYTE)0x0AU)
+#define CHAR_CR ((BYTE)0x0DU)
+
+#define TO_UPPER(X) (((BYTE_CAST(X) >= 0x61U) && (BYTE_CAST(X) <= 0x7AU)) ? BYTE_CAST(BYTE_CAST(X) - 0x20U) : BYTE_CAST(X))
+#define IS_WILDCARD(X,Y) (((X) == LIBREPLACE_WILDCARD) && (options->match_crlf || ((BYTE_CAST(Y) != CHAR_LF) && (BYTE_CAST(Y) != CHAR_CR))))
+#define COMPARE_CHAR(X,Y) (options->case_insensitive ? (TO_UPPER(X) == TO_UPPER(Y)) : (BYTE_CAST(X) == BYTE_CAST(Y)))
 
 #define INCREMENT(VALUE, LIMIT) do \
 { \
@@ -87,14 +89,14 @@ static __forceinline BYTE ringbuffer_peek(const ringbuffer_t *const ringbuffer)
 	return ringbuffer->buffer[ringbuffer->index_write];
 }
 
-static __inline BOOL ringbuffer_compare(const ringbuffer_t *const ringbuffer, const BYTE *needle, const BOOL *const wildcard_map, const libreplace_flags_t *const options)
+static __inline BOOL ringbuffer_compare(const ringbuffer_t *const ringbuffer, const WORD *needle, const libreplace_flags_t *const options)
 {
 	if(ringbuffer->index_write == 0U)
 	{
 		DWORD needle_pos;
-		for(needle_pos = 1U; needle_pos < ringbuffer->capacity; ++needle_pos) /*first element is skipped intentionally!*/
+		for(needle_pos = 1U; needle_pos < ringbuffer->valid; ++needle_pos) /*first element is skipped!*/
 		{
-			if((!IS_WILDCARD(needle_pos, ringbuffer->buffer[needle_pos])) && (!COMPARE_CHAR(ringbuffer->buffer[needle_pos], needle[needle_pos])))
+			if((!IS_WILDCARD(needle[needle_pos], ringbuffer->buffer[needle_pos])) && (!COMPARE_CHAR(ringbuffer->buffer[needle_pos], needle[needle_pos])))
 			{
 				return FALSE;
 			}
@@ -104,9 +106,9 @@ static __inline BOOL ringbuffer_compare(const ringbuffer_t *const ringbuffer, co
 	{
 		DWORD needle_pos, buffer_pos = ringbuffer->index_write;
 		INCREMENT(buffer_pos, ringbuffer->capacity);
-		for(needle_pos = 1U; needle_pos < ringbuffer->capacity; ++needle_pos) /*first element is skipped intentionally!*/
+		for(needle_pos = 1U; needle_pos < ringbuffer->valid; ++needle_pos) /*first element is skipped!*/
 		{
-			if((!IS_WILDCARD(needle_pos, ringbuffer->buffer[buffer_pos])) && (!COMPARE_CHAR(ringbuffer->buffer[buffer_pos], needle[needle_pos])))
+			if((!IS_WILDCARD(needle[needle_pos], ringbuffer->buffer[buffer_pos])) && (!COMPARE_CHAR(ringbuffer->buffer[buffer_pos], needle[needle_pos])))
 			{
 				return FALSE;
 			}
@@ -211,7 +213,7 @@ static __inline BOOL libreplace_flush_pending(ringbuffer_t *const ringbuffer, co
 /* Search & Replace                                                        */
 /* ======================================================================= */
 
-BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, const libreplace_logger_t *const logger, const BYTE *const needle, const BOOL *const wildcard_map, const DWORD needle_len, const BYTE *const replacement, const DWORD replacement_len, const libreplace_flags_t *const options, volatile BOOL *const abort_flag)
+BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, const libreplace_logger_t *const logger, const WORD *const needle, const DWORD needle_len, const BYTE *const replacement, const DWORD replacement_len, const libreplace_flags_t *const options, volatile BOOL *const abort_flag)
 {
 	BYTE char_in, char_out, last_linbreak = 0U;
 	BOOL success = FALSE, pending_input = FALSE, error_flag = FALSE;
@@ -262,45 +264,45 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 				goto finished;
 			}
 		}
-
-		/* make sure enough input data is present in the buffer */
-		if(ringbuffer->valid < needle_len)
+		else if(ringbuffer->valid < needle_len)
 		{
-			goto skip_check;
+			goto skip_check; /*not enough data buffered yet!*/
 		}
 
 		/* perfrom quick pre-test on the first character in the buffer */
-		if(IS_WILDCARD(0U, ringbuffer_peek(ringbuffer)) || COMPARE_CHAR(ringbuffer_peek(ringbuffer), needle[0U]))
+		if((!IS_WILDCARD(needle[0U], ringbuffer_peek(ringbuffer))) && (!COMPARE_CHAR(ringbuffer_peek(ringbuffer), needle[0U])))
 		{
-			/* if a full match is found, write the replacement */
-			if(ringbuffer_compare(ringbuffer, needle, wildcard_map, options))
+			goto skip_check; 
+		}
+
+		/* perfrom full comparison and, if a match is found, write the replacement */
+		if(ringbuffer_compare(ringbuffer, needle, options))
+		{
+			++replacement_count;
+			if(options->verbose || options->dry_run)
 			{
-				++replacement_count;
-				if(options->verbose || options->dry_run)
+				libreplace_print_fmt(logger, "%s occurence at offset: 0x%08lX%08lX\n", options->dry_run ? "Found" : "Replaced", position.HighPart, position.LowPart);
+			}
+			if(!options->dry_run)
+			{
+				if(!libreplace_write(replacement, replacement_len, io_functions))
 				{
-					libreplace_print_fmt(logger, "%s occurence at offset: 0x%08lX%08lX\n", options->dry_run ? "Found" : "Replaced", position.HighPart, position.LowPart);
+					libreplace_print(logger, WR_ERROR_MESSAGE);
+					goto finished;
 				}
-				if(!options->dry_run)
+				ringbuffer_reset(ringbuffer);
+			}
+			else
+			{
+				if(!libreplace_flush_pending(ringbuffer, io_functions))
 				{
-					if(!libreplace_write(replacement, replacement_len, io_functions))
-					{
-						libreplace_print(logger, WR_ERROR_MESSAGE);
-						goto finished;
-					}
-					ringbuffer_reset(ringbuffer);
+					libreplace_print(logger, WR_ERROR_MESSAGE);
+					goto finished;
 				}
-				else
-				{
-					if(!libreplace_flush_pending(ringbuffer, io_functions))
-					{
-						libreplace_print(logger, WR_ERROR_MESSAGE);
-						goto finished;
-					}
-				}
-				if(options->replace_once)
-				{
-					break;
-				}
+			}
+			if(options->replace_once)
+			{
+				break;
 			}
 		}
 
