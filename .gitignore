@@ -3,6 +3,7 @@
 *.sdf
 *.suo
 *.user
+/**/.vs
 /**/ipch
 /bin
 /etc/fastrand/bin

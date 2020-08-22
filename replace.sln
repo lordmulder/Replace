@@ -1,6 +1,8 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 11.00
-# Visual Studio 2010
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.1231
+MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "replace", "frontend\replace.vcxproj", "{4AB52F90-A3E1-4382-89AC-A2F27A08A137}"
 	ProjectSection(ProjectDependencies) = postProject
 		{FEC631E9-F732-49AC-9E9D-EC710D589E95} = {FEC631E9-F732-49AC-9E9D-EC710D589E95}
@@ -12,6 +14,8 @@ Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
 		Debug|x64 = Debug|x64
+		Release_AVX|Win32 = Release_AVX|Win32
+		Release_AVX|x64 = Release_AVX|x64
 		Release_SSE2|Win32 = Release_SSE2|Win32
 		Release_SSE2|x64 = Release_SSE2|x64
 		Release|Win32 = Release|Win32
@@ -22,6 +26,10 @@ Global
 		{4AB52F90-A3E1-4382-89AC-A2F27A08A137}.Debug|Win32.Build.0 = Debug|Win32
 		{4AB52F90-A3E1-4382-89AC-A2F27A08A137}.Debug|x64.ActiveCfg = Debug|x64
 		{4AB52F90-A3E1-4382-89AC-A2F27A08A137}.Debug|x64.Build.0 = Debug|x64
+		{4AB52F90-A3E1-4382-89AC-A2F27A08A137}.Release_AVX|Win32.ActiveCfg = Release_AVX|Win32
+		{4AB52F90-A3E1-4382-89AC-A2F27A08A137}.Release_AVX|Win32.Build.0 = Release_AVX|Win32
+		{4AB52F90-A3E1-4382-89AC-A2F27A08A137}.Release_AVX|x64.ActiveCfg = Release_AVX|x64
+		{4AB52F90-A3E1-4382-89AC-A2F27A08A137}.Release_AVX|x64.Build.0 = Release_AVX|x64
 		{4AB52F90-A3E1-4382-89AC-A2F27A08A137}.Release_SSE2|Win32.ActiveCfg = Release_SSE2|Win32
 		{4AB52F90-A3E1-4382-89AC-A2F27A08A137}.Release_SSE2|Win32.Build.0 = Release_SSE2|Win32
 		{4AB52F90-A3E1-4382-89AC-A2F27A08A137}.Release_SSE2|x64.ActiveCfg = Release_SSE2|x64
@@ -33,6 +41,10 @@ Global
 		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Debug|Win32.Build.0 = Debug|Win32
 		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Debug|x64.ActiveCfg = Debug|x64
 		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Debug|x64.Build.0 = Debug|x64
+		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Release_AVX|Win32.ActiveCfg = Release_AVX|Win32
+		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Release_AVX|Win32.Build.0 = Release_AVX|Win32
+		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Release_AVX|x64.ActiveCfg = Release_AVX|x64
+		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Release_AVX|x64.Build.0 = Release_AVX|x64
 		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Release_SSE2|Win32.ActiveCfg = Release_SSE2|Win32
 		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Release_SSE2|Win32.Build.0 = Release_SSE2|Win32
 		{FEC631E9-F732-49AC-9E9D-EC710D589E95}.Release_SSE2|x64.ActiveCfg = Release_SSE2|x64
@@ -43,5 +55,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {CA2930E2-167C-49FB-86C3-BCA31D8A544F}
 	EndGlobalSection
 EndGlobal
