@@ -11,25 +11,29 @@
 
 #ifdef _DEBUG
 #define REPLACE_MAIN(X, ...) X main(__VA_ARGS__)
-#define _REPLACE_MAIN(...) main(__VA_ARGS__)
+#define _MAIN(...) main(__VA_ARGS__)
 #else
 #define REPLACE_MAIN(X, ...) static X replace_main(__VA_ARGS__)
-#define _REPLACE_MAIN(...) replace_main(__VA_ARGS__)
+#define _MAIN(...) replace_main(__VA_ARGS__)
 #endif
+
+#define EXIT_SUCCESS 0U
+#define EXIT_FAILURE 1U
+#define EXIT_ABORTED 130U
 
 #define CHECK_ABORT_REQUEST() do \
 { \
 	if(g_abort_requested) \
 	{ \
-		result = 130U; \
+		if(!options.return_replace_count) \
+		{ \
+			result = EXIT_ABORTED; \
+		} \
 		print_text(std_err, ABORTED_MESSAGE); \
 		goto cleanup; \
 	} \
 } \
 while(0)
-
-#define EXIT_SUCCESS 0U
-#define EXIT_FAILURE 1U
 
 static const CHAR *const ABORTED_MESSAGE = "Process was aborted.\n";
 
@@ -217,16 +221,15 @@ REPLACE_MAIN(UINT, const int argc, const LPWSTR *const argv)
 		goto cleanup;
 	}
 
+	if (options.return_replace_count)
+	{
+		result = (UINT)(-1);
+	}
+
 	if(options.show_help)
 	{
 		print_manpage(std_err);
-		result = EXIT_SUCCESS;
 		goto cleanup;
-	}
-
-	if(options.return_replace_count)
-	{
-		result = (UINT)(-1);
 	}
 
 	/* -------------------------------------------------------- */
@@ -573,7 +576,7 @@ void startup(void)
 
 	if(argv = CommandLineToArgvW(GetCommandLineW(), &argc))
 	{
-		result = _REPLACE_MAIN(argc, argv);
+		result = _MAIN(argc, argv);
 		LocalFree(argv);
 	}
 
