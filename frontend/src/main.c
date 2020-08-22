@@ -229,6 +229,7 @@ REPLACE_MAIN(UINT, const int argc, const LPWSTR *const argv)
 	if(options.show_help)
 	{
 		print_manpage(std_err);
+		result = options.return_replace_count ? 0U : EXIT_SUCCESS;
 		goto cleanup;
 	}
 
