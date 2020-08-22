@@ -278,7 +278,10 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 		/* perfrom full comparison and, if a match is found, write the replacement */
 		if(ringbuffer_compare(ringbuffer, needle, options))
 		{
-			++replacement_count;
+			if (replacement_count < MAXDWORD)
+			{
+				++replacement_count;
+			}
 			if(options->verbose || options->dry_run)
 			{
 				libreplace_print_fmt(logger, "%s occurence at offset: 0x%08lX%08lX\n", options->dry_run ? "Found" : "Replaced", position.HighPart, position.LowPart);
