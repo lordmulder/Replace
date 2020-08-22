@@ -10,9 +10,11 @@
 #include <ShellAPI.h> /*CommandLineToArgvW*/
 
 #ifdef _DEBUG
-#define _tmain main
+#define REPLACE_MAIN(X, ...) X main(__VA_ARGS__)
+#define _REPLACE_MAIN(...) main(__VA_ARGS__)
 #else
-#define _tmain replace_main
+#define REPLACE_MAIN(X, ...) static X replace_main(__VA_ARGS__)
+#define _REPLACE_MAIN(...) replace_main(__VA_ARGS__)
 #endif
 
 #define CHECK_ABORT_REQUEST() do \
@@ -25,6 +27,9 @@
 	} \
 } \
 while(0)
+
+#define EXIT_SUCCESS 0U
+#define EXIT_FAILURE 1U
 
 static const CHAR *const ABORTED_MESSAGE = "Process was aborted.\n";
 
@@ -56,13 +61,16 @@ static void print_manpage(const HANDLE std_err)
 	print_text(std_err, "  -y  Try to overwrite read-only files; i.e. clears the read-only flag\n");
 	print_text(std_err, "  -d  Dry run; do not actually replace occurrences of '<needle>'\n");
 	print_text(std_err, "  -v  Enable verbose mode; print additional diagnostic information to STDERR\n");
+	print_text(std_err, "  -x  Exit code equals number of replacements; value '-1' indicates error\n");
 	print_text(std_err, "  -t  Run self-test and exit\n");
 	print_text(std_err, "  -h  Display this help text and exit\n\n");
+	print_text(std_err, "ExitCode:\n");
+	print_text(std_err, "  By default, return '0' in case of success, or '1' if anything went wrong\n\n");
 	print_text(std_err, "Notes:\n");
 	print_text(std_err, "  1. If *only* an '<input_file>' is specified, the file is modified in-place!\n");
 	print_text(std_err, "  2. If file names are omitted, reads from STDIN and writes to STDOUT.\n");
 	print_text(std_err, "  3. File name can be specified as \"-\" to read from STDIN or write to STDOUT.\n");
-	print_text(std_err, "  4. The length of a Hex string must be *even*; with optional '0x' prefix.\n\n");
+	print_text(std_err, "  4. The length of a Hex string must be *even*, with optional '0x' prefix.\n\n");
 	print_text(std_err, "Examples:\n");
 	print_text(std_err, "  replace.exe \"foobar\" \"quux\" \"input.txt\" \"output.txt\"\n");
 	print_text(std_err, "  replace.exe -e \"foo\\nbar\" \"qu\\tux\" \"input.txt\" \"output.txt\"\n");
@@ -152,6 +160,9 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 				case L'v':
 					options->flags.verbose = TRUE;
 					break;
+				case L'x':
+					options->return_replace_count = TRUE;
+					break;
 				case L'y':
 					options->force_overwrite = TRUE;
 					break;
@@ -173,13 +184,13 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 /* Main                                                                    */
 /* ======================================================================= */
 
-UINT _tmain(const int argc, const LPWSTR *const argv)
+REPLACE_MAIN(UINT, const int argc, const LPWSTR *const argv)
 {
-	UINT result = 1U, previous_output_cp = 0U;
+	UINT result = EXIT_FAILURE, previous_output_cp = 0U;
 	int param_offset = 1;
 	BYTE *needle = NULL, *replacement = NULL;
 	WORD *needle_expanded = NULL;
-	DWORD needle_len = 0U, replacement_len = 0U;
+	DWORD needle_len = 0U, replacement_len = 0U, replacement_count = 0U;
 	options_t options;
 	HANDLE input = INVALID_HANDLE_VALUE, output = INVALID_HANDLE_VALUE;
 	libreplace_logger_t logger;
@@ -208,8 +219,13 @@ UINT _tmain(const int argc, const LPWSTR *const argv)
 	if(options.show_help)
 	{
 		print_manpage(std_err);
-		result = 0U;
+		result = EXIT_SUCCESS;
 		goto cleanup;
+	}
+
+	if(options.return_replace_count)
+	{
+		result = (UINT)(-1);
 	}
 
 	/* -------------------------------------------------------- */
@@ -266,7 +282,7 @@ UINT _tmain(const int argc, const LPWSTR *const argv)
 			goto cleanup;
 		}
 		print_text(std_err, "Self-test completed.\n");
-		result = 0U;
+		result = EXIT_SUCCESS;
 		goto cleanup;
 	}
 
@@ -436,7 +452,7 @@ UINT _tmain(const int argc, const LPWSTR *const argv)
 
 	CHECK_ABORT_REQUEST();
 
-	if(!libreplace_search_and_replace(&io_functions, &logger, needle_expanded, needle_len, replacement, replacement_len, &options.flags, &g_abort_requested))
+	if(!libreplace_search_and_replace(&io_functions, &logger, needle_expanded, needle_len, replacement, replacement_len, &options.flags, &replacement_count, &g_abort_requested))
 	{
 		CHECK_ABORT_REQUEST();
 		print_text(std_err, "Error: Something went wrong. Output probably is incomplete!\n");
@@ -475,7 +491,7 @@ UINT _tmain(const int argc, const LPWSTR *const argv)
 		}
 	}
 
-	result = 0U;
+	result = options.return_replace_count ? ((replacement_count <= ((DWORD)MAXINT32)) ? replacement_count : MAXINT32) : EXIT_SUCCESS;
 
 	/* -------------------------------------------------------- */
 	/* Final clean-up                                           */
@@ -556,7 +572,7 @@ void startup(void)
 
 	if(argv = CommandLineToArgvW(GetCommandLineW(), &argc))
 	{
-		result = _tmain(argc, argv);
+		result = _REPLACE_MAIN(argc, argv);
 		LocalFree(argv);
 	}
 

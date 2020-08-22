@@ -39,6 +39,7 @@ static BOOL run_test(const BOOL dry_run, const BOOL case_insensitive, const BOOL
 	libreplace_io_t io_functions;
 	libreplace_flags_t options;
 	WORD *needle_expanded = NULL;
+	DWORD replacement_count = 0U;
 
 	const DWORD needle_len      = lstrlenA(needle);
 	const DWORD replacement_len = lstrlenA(replacement);
@@ -63,7 +64,7 @@ static BOOL run_test(const BOOL dry_run, const BOOL case_insensitive, const BOOL
 
 	init_io_functions(&io_functions, memory_read_byte, memory_write_byte, (DWORD_PTR)&input_context, (DWORD_PTR)output_context);
 
-	if(!libreplace_search_and_replace(&io_functions, NULL, needle_expanded, needle_len, (const BYTE*)replacement, replacement_len, &options, &g_abort_requested))
+	if(!libreplace_search_and_replace(&io_functions, NULL, needle_expanded, needle_len, (const BYTE*)replacement, replacement_len, &options, &replacement_count, &g_abort_requested))
 	{
 		goto cleanup;
 	}

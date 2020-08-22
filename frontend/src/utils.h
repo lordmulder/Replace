@@ -19,6 +19,7 @@ typedef struct options_t
 	BOOL binary_mode;
 	BOOL force_sync;
 	BOOL force_overwrite;
+	BOOL return_replace_count;
 	BOOL self_test;
 }
 options_t;

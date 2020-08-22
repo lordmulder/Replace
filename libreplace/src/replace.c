@@ -213,22 +213,24 @@ static __inline BOOL libreplace_flush_pending(ringbuffer_t *const ringbuffer, co
 /* Search & Replace                                                        */
 /* ======================================================================= */
 
-BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, const libreplace_logger_t *const logger, const WORD *const needle, const DWORD needle_len, const BYTE *const replacement, const DWORD replacement_len, const libreplace_flags_t *const options, volatile BOOL *const abort_flag)
+BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, const libreplace_logger_t *const logger, const WORD *const needle, const DWORD needle_len, const BYTE *const replacement, const DWORD replacement_len, const libreplace_flags_t *const options, DWORD *const replacement_count, volatile BOOL *const abort_flag)
 {
 	BYTE char_in, char_out, last_linbreak = 0U;
 	BOOL success = FALSE, pending_input = FALSE, error_flag = FALSE;
-	DWORD replacement_count = 0U;
 	ULARGE_INTEGER position = { 0U, 0U };
 	ringbuffer_t *ringbuffer = NULL;
 
 	/* check parameters */
-	if(!(io_functions && needle && replacement && (needle_len > 0U) && options && abort_flag))
+	if(!(io_functions && needle && replacement && (needle_len > 0U) && options && replacement_count && abort_flag))
 	{
 		libreplace_print(logger, "Invalid function parameters detected!\n");
 		goto finished;
 	}
 
-	/* check length limitation */
+	/* initialize replacement counter */
+	*replacement_count = 0U;
+
+	/* check the length limitations */
 	if((needle_len > LIBREPLACE_MAXLEN) || (replacement_len > LIBREPLACE_MAXLEN))
 	{
 		libreplace_print(logger, "Needle and/or replacement length exceeds the allowable limit!\n");
@@ -278,9 +280,9 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 		/* perfrom full comparison and, if a match is found, write the replacement */
 		if(ringbuffer_compare(ringbuffer, needle, options))
 		{
-			if (replacement_count < MAXDWORD)
+			if (*replacement_count < MAXDWORD)
 			{
-				++replacement_count;
+				++*replacement_count;
 			}
 			if(options->verbose || options->dry_run)
 			{
@@ -356,7 +358,7 @@ BOOL libreplace_search_and_replace(const libreplace_io_t *const io_functions, co
 
 	if(options->verbose)
 	{
-		libreplace_print_fmt(logger, options->dry_run ? "Total occurences found: %lu\n" : "Total occurences replaced: %lu\n", replacement_count);
+		libreplace_print_fmt(logger, options->dry_run ? "Total occurences found: %lu\n" : "Total occurences replaced: %lu\n", *replacement_count);
 	}
 
 finished:
