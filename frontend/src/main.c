@@ -10,11 +10,11 @@
 #include <ShellAPI.h> /*CommandLineToArgvW*/
 
 #ifdef _DEBUG
-#define REPLACE_MAIN(X, ...) X main(__VA_ARGS__)
-#define _MAIN(...) main(__VA_ARGS__)
+#define REPLACE_MAIN(X, ...) X wmain(__VA_ARGS__)
+#define _tmain wmain
 #else
 #define REPLACE_MAIN(X, ...) static X replace_main(__VA_ARGS__)
-#define _MAIN(...) replace_main(__VA_ARGS__)
+#define _tmain replace_main
 #endif
 
 #define EXIT_SUCCESS 0U
@@ -107,7 +107,7 @@ BOOL WINAPI ctrl_handler_routine(const DWORD type)
 /* Command-line Options                                                    */
 /* ======================================================================= */
 
-static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *const argv, int *const index, options_t *const options)
+static int parse_options(const HANDLE std_err, const int argc, const LPCWSTR *const argv, int *const index, options_t *const options)
 {
 	DWORD flag_pos;
 	SecureZeroMemory(options, sizeof(options_t));
@@ -189,7 +189,7 @@ static int parse_options(const HANDLE std_err, const int argc, const LPWSTR *con
 /* Main                                                                    */
 /* ======================================================================= */
 
-REPLACE_MAIN(UINT, const int argc, const LPWSTR *const argv)
+REPLACE_MAIN(UINT, const int argc, LPCWSTR *const argv)
 {
 	UINT result = EXIT_FAILURE, previous_output_cp = 0U;
 	int param_offset = 1;
@@ -566,7 +566,7 @@ cleanup:
 /* Entry point                                                             */
 /* ======================================================================= */
 
-void startup(void)
+void _entryPoint(void)
 {
 	int argc;
 	UINT result = (UINT)(-1);
@@ -577,7 +577,7 @@ void startup(void)
 
 	if(argv = CommandLineToArgvW(GetCommandLineW(), &argc))
 	{
-		result = _MAIN(argc, argv);
+		result = _tmain(argc, argv);
 		LocalFree(argv);
 	}
 
