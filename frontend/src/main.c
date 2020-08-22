@@ -65,7 +65,8 @@ static void print_manpage(const HANDLE std_err)
 	print_text(std_err, "  -t  Run self-test and exit\n");
 	print_text(std_err, "  -h  Display this help text and exit\n\n");
 	print_text(std_err, "ExitCode:\n");
-	print_text(std_err, "  By default, return '0' in case of success, or '1' if anything went wrong\n\n");
+	print_text(std_err, "  By default, returns '0' in case of success, or '1' if anything went wrong\n");
+	print_text(std_err, "  If '<needle>' could not be found, this is *not* considered an error.\n\n");
 	print_text(std_err, "Notes:\n");
 	print_text(std_err, "  1. If *only* an '<input_file>' is specified, the file is modified in-place!\n");
 	print_text(std_err, "  2. If file names are omitted, reads from STDIN and writes to STDOUT.\n");
