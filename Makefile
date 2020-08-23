@@ -5,14 +5,14 @@
 DEBUG ?= 0
 MARCH ?= native
 MTUNE ?= native
-
 # -----------------------------------------------
 # SYSTEM DETECTION
 # -----------------------------------------------
 
-OS_TYPE := $(shell $(CXX) -dumpmachine)
-ENTRYPOINT := _entryPoint
+OS_TYPE := $(shell $(CC) -dumpmachine)
+WINDRES ?= windres
 
+ENTRYPOINT := _entryPoint
 ifneq (,$(findstring i686-,$(OS_TYPE)))
 	ENTRYPOINT := $(addprefix _,$(ENTRYPOINT))
 endif
@@ -64,7 +64,7 @@ mkdirs:
 	mkdir -p $(OBJ_PATH)
 
 $(OBJ_PATH)/%.res.o: $(CLI_PATH)/%.rc
-	windres -i $< -o $@
+	$(WINDRES) -i $< -o $@
 
 clean:
 	rm -f $(OBJFILES) $(OUT_FILE)

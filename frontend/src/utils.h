@@ -37,10 +37,20 @@ static const BYTE MY_WILDCARD = '?';
 #ifndef EXIT_FAILURE
 #define EXIT_FAILURE 1U
 #endif
+#ifndef EXIT_ABORTED
 #define EXIT_ABORTED 130U
+#endif
+
+/* Limits */
+#ifndef MAXUINT32
+#define MAXUINT32 ((UINT32)~((UINT32)0))
+#endif
+#ifndef MAXINT32
+#define MAXINT32 ((INT32)(MAXUINT32 >> 1))
+#endif
 
 /* Unused parameter */
-#define UNUSED(X) ((void)(X))
+#define UNUSED_PARAM(X) ((void)(X))
 
 /* ======================================================================= */
 /* String Routines                                                         */
@@ -487,7 +497,7 @@ static __inline BOOL memory_read_byte(BYTE *const output, const DWORD_PTR input,
 		*output = ctx->data_in[ctx->pos++];
 		return TRUE;
 	}
-	UNUSED(error_flag);
+	UNUSED_PARAM(error_flag);
 	return FALSE;
 }
 
