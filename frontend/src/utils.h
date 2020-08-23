@@ -30,6 +30,18 @@ volatile BOOL g_abort_requested = FALSE;
 /* Wildcard char */
 static const BYTE MY_WILDCARD = '?';
 
+/* Exit status */
+#ifndef EXIT_SUCCESS
+#define EXIT_SUCCESS 0U
+#endif
+#ifndef EXIT_FAILURE
+#define EXIT_FAILURE 1U
+#endif
+#define EXIT_ABORTED 130U
+
+/* Unused parameter */
+#define UNUSED(X) ((void)(X))
+
 /* ======================================================================= */
 /* String Routines                                                         */
 /* ======================================================================= */
@@ -475,7 +487,7 @@ static __inline BOOL memory_read_byte(BYTE *const output, const DWORD_PTR input,
 		*output = ctx->data_in[ctx->pos++];
 		return TRUE;
 	}
-	UNREFERENCED_PARAMETER(error_flag);
+	UNUSED(error_flag);
 	return FALSE;
 }
 

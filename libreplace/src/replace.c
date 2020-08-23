@@ -5,10 +5,20 @@
 
 #include "libreplace/replace.h"
 
-#ifdef _DEBUG
+#if !defined(__GNUC__) && !defined(_DEBUG)
+#define NDEBUG 1
+#endif
+
+#ifndef NDEBUG
 #define MY_ASSERT(X) do { if(!((X))) FatalExit(-1); } while(0)
 #else
-#define MY_ASSERT(X) __noop((X))
+#define MY_ASSERT(X) ((void)0)
+#endif
+
+#ifdef __GNUC__
+#define MY_INLINE __attribute__((always_inline)) __inline
+#else
+#define MY_INLINE __forceinline
 #endif
 
 #define BYTE_CAST(X) ((BYTE)((X) & 0xFFU))
@@ -54,7 +64,7 @@ typedef struct ringbuffer_t
 }
 ringbuffer_t;
 
-static ringbuffer_t *ringbuffer_alloc(const DWORD capacity)
+static __inline ringbuffer_t *ringbuffer_alloc(const DWORD capacity)
 {
 	if((capacity > 0U) && (capacity < MAXDWORD))
 	{
@@ -70,7 +80,7 @@ static ringbuffer_t *ringbuffer_alloc(const DWORD capacity)
 	return NULL;
 }
 
-static __inline BOOL ringbuffer_append(const BYTE in, BYTE *const ptr_out, ringbuffer_t *const ringbuffer)
+static MY_INLINE BOOL ringbuffer_append(const BYTE in, BYTE *const ptr_out, ringbuffer_t *const ringbuffer)
 {
 	MY_ASSERT(ringbuffer->index_flush == MAXDWORD);
 	*ptr_out = ringbuffer->buffer[ringbuffer->index_write];
@@ -84,12 +94,12 @@ static __inline BOOL ringbuffer_append(const BYTE in, BYTE *const ptr_out, ringb
 	return TRUE;
 }
 
-static __forceinline BYTE ringbuffer_peek(const ringbuffer_t *const ringbuffer)
+static MY_INLINE BYTE ringbuffer_peek(const ringbuffer_t *const ringbuffer)
 {
 	return ringbuffer->buffer[ringbuffer->index_write];
 }
 
-static __inline BOOL ringbuffer_compare(const ringbuffer_t *const ringbuffer, const WORD *needle, const libreplace_flags_t *const options)
+static MY_INLINE BOOL ringbuffer_compare(const ringbuffer_t *const ringbuffer, const WORD *needle, const libreplace_flags_t *const options)
 {
 	if(ringbuffer->index_write == 0U)
 	{
@@ -118,7 +128,7 @@ static __inline BOOL ringbuffer_compare(const ringbuffer_t *const ringbuffer, co
 	return TRUE;
 }
 
-static __inline BOOL ringbuffer_flush(BYTE *const out, ringbuffer_t *const ringbuffer)
+static MY_INLINE BOOL ringbuffer_flush(BYTE *const out, ringbuffer_t *const ringbuffer)
 {
 	if(ringbuffer->index_flush == MAXDWORD)
 	{
@@ -134,7 +144,7 @@ static __inline BOOL ringbuffer_flush(BYTE *const out, ringbuffer_t *const ringb
 	return FALSE;
 }
 
-static __inline void ringbuffer_reset(ringbuffer_t *const ringbuffer)
+static MY_INLINE void ringbuffer_reset(ringbuffer_t *const ringbuffer)
 {
 	ringbuffer->index_write = ringbuffer->valid = 0U;
 	ringbuffer->index_flush = MAXDWORD;
@@ -163,7 +173,7 @@ static __inline BOOL libreplace_print_fmt(const libreplace_logger_t *const logge
 	return result;
 }
 
-static __inline BOOL libreplace_normalize(BYTE *const char_ptr, BYTE *const last_linbreak)
+static MY_INLINE BOOL libreplace_normalize(BYTE *const char_ptr, BYTE *const last_linbreak)
 {
 	if((*char_ptr == CHAR_LF) || (*char_ptr == CHAR_CR))
 	{
@@ -182,7 +192,7 @@ static __inline BOOL libreplace_normalize(BYTE *const char_ptr, BYTE *const last
 	return TRUE;
 }
 
-static __inline BOOL libreplace_write(const BYTE *const data, const DWORD data_len, const libreplace_io_t *const io_functions)
+static MY_INLINE BOOL libreplace_write(const BYTE *const data, const DWORD data_len, const libreplace_io_t *const io_functions)
 {
 	DWORD data_pos;
 	for(data_pos = 0U; data_pos < data_len; ++data_pos)
@@ -195,7 +205,7 @@ static __inline BOOL libreplace_write(const BYTE *const data, const DWORD data_l
 	return TRUE;
 }
 
-static __inline BOOL libreplace_flush_pending(ringbuffer_t *const ringbuffer, const libreplace_io_t *const io_functions)
+static MY_INLINE BOOL libreplace_flush_pending(ringbuffer_t *const ringbuffer, const libreplace_io_t *const io_functions)
 {
 	BYTE temp;
 	while(ringbuffer_flush(&temp, ringbuffer))

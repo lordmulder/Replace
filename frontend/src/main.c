@@ -17,10 +17,6 @@
 #define _tmain replace_main
 #endif
 
-#define EXIT_SUCCESS 0U
-#define EXIT_FAILURE 1U
-#define EXIT_ABORTED 130U
-
 #define CHECK_ABORT_REQUEST() do \
 { \
 	if(g_abort_requested) \
