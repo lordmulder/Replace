@@ -13,7 +13,7 @@ MTUNE ?= native
 OS_TYPE := $(shell $(CXX) -dumpmachine)
 ENTRYPOINT := _entryPoint
 
-ifeq (,$(findstring x86_64,$(OS_TYPE)))
+ifneq (,$(findstring i686-,$(OS_TYPE)))
 	ENTRYPOINT := $(addprefix _,$(ENTRYPOINT))
 endif
 
@@ -21,19 +21,22 @@ endif
 # PATHS
 # -----------------------------------------------
 
-OUT_PATH := bin/$(OS_TYPE)
-OUT_FILE := $(OUT_PATH)/replace.exe
-RES_FILE := frontend/replace.rc
-OBJ_PATH := obj/$(OS_TYPE)
-OBJ_FILE := $(RCC_PATH)/replace.rc.o
+CLI_PATH := frontend
+LIB_PATH := libreplace
 
-SRCFILES := $(wildcard libreplace/src/*.c) $(wildcard frontend/src/*.c)
+OUT_PATH := bin/$(OS_TYPE)
+OBJ_PATH := obj/$(OS_TYPE)
+OUT_FILE := $(OUT_PATH)/replace.exe
+
+SRCFILES := $(wildcard $(LIB_PATH)/src/*.c) $(wildcard $(CLI_PATH)/src/*.c)
+RESFILES := $(wildcard frontend/*.rc)
+OBJFILES := $(addprefix $(OBJ_PATH)/,$(patsubst %.rc,%.res.o,$(notdir $(RESFILES))))
 
 # -----------------------------------------------
 # FLAGS
 # -----------------------------------------------
 
-CFLAGS = -Wno-incompatible-pointer-types -e $(ENTRYPOINT) -nostdlib
+CFLAGS = -Wno-incompatible-pointer-types -I$(LIB_PATH)/include -e $(ENTRYPOINT) -nostdlib
 LDFLAGS = -lkernel32 -luser32 -lshell32
 
 ifeq ($(DEBUG),0)
@@ -48,15 +51,20 @@ CFLAGS += -march=$(MARCH) -mtune=$(MTUNE)
 # MAKE RULES
 # -----------------------------------------------
 
-.PHONY: all clean
+.PHONY: all mkdirs clean
 
-all:
-	mkdir -p "$(OUT_PATH)" "$(OBJ_PATH)"
-	windres -i "$(RES_FILE)" -o "$(OBJ_FILE)"
-	$(CC) -I libreplace/include $(CFLAGS) -o "$(OUT_FILE)" $(SRCFILES) "$(OBJ_FILE)" $(LDFLAGS)
+all: mkdirs $(SRCFILES) $(OBJFILES)
+	$(CC) $(CFLAGS) -o $(OUT_FILE) $(SRCFILES) $(OBJFILES) $(LDFLAGS)
 ifeq ($(DEBUG),0)
-	strip "$(OUT_FILE)"
+	strip $(OUT_FILE)
 endif
 
+mkdirs:
+	mkdir -p $(OUT_PATH)
+	mkdir -p $(OBJ_PATH)
+
+$(OBJ_PATH)/%.res.o: $(CLI_PATH)/%.rc
+	windres -i $< -o $@
+
 clean:
-	rm -f "$(RES_FILE)" "$(OUT_FILE)"
+	rm -f $(OBJFILES) $(OUT_FILE)
